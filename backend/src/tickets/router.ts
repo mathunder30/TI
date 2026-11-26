@@ -1,4 +1,5 @@
 import { Router, type RequestHandler } from 'express';
+import { z } from 'zod';
 import {
   CommentVisibility,
   TicketEventType,
@@ -220,6 +221,109 @@ export function createTicketsRouter(dependencies = productionDependencies) {
   const { database } = dependencies;
   const router = Router();
   router.use(requireAuthenticatedSession);
+
+  router.get('/dashboard/employee', requireFuncionario, async (request, response) => {
+    const parsed = z.object({}).strict().safeParse(request.query);
+    if (!parsed.success) throw new HttpError(400, 'Parâmetros de dashboard inválidos.');
+    const auth = getAuthContext(request as AuthenticatedRequest);
+    const where = { requesterUserId: auth.user.id };
+    const [groups, recentTickets] = await database.$transaction((transaction) =>
+      Promise.all([
+        transaction.ticket.groupBy({
+          by: ['status', 'priority'],
+          where,
+          _count: { _all: true },
+        }),
+        transaction.ticket.findMany({
+          where,
+          orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+          take: 6,
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            categoryNameSnapshot: true,
+            priority: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+      ]),
+    );
+    const countByStatus = (statuses: TicketStatus[]) =>
+      groups
+        .filter((item) => statuses.includes(item.status))
+        .reduce((sum, item) => sum + item._count._all, 0);
+    response.json({
+      summary: {
+        open: countByStatus([TicketStatus.ABERTO, TicketStatus.EM_TRIAGEM, TicketStatus.REABERTO]),
+        inProgress: countByStatus([TicketStatus.EM_ATENDIMENTO]),
+        waitingForEmployee: countByStatus([TicketStatus.AGUARDANDO_FUNCIONARIO]),
+        resolved: countByStatus([TicketStatus.RESOLVIDO, TicketStatus.FECHADO]),
+      },
+      recentTickets: recentTickets.map(toTicketListDto),
+    });
+  });
+
+  router.get('/dashboard/ti', requireTi(database), async (request, response) => {
+    const parsed = z.object({}).strict().safeParse(request.query);
+    if (!parsed.success) throw new HttpError(400, 'Parâmetros de dashboard inválidos.');
+    const [groups, recentTickets] = await database.$transaction((transaction) =>
+      Promise.all([
+        transaction.ticket.groupBy({
+          by: ['status', 'priority'],
+          _count: { _all: true },
+        }),
+        transaction.ticket.findMany({
+          orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+          take: 8,
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            categoryNameSnapshot: true,
+            priority: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+            requesterNameSnapshot: true,
+            unitNameSnapshot: true,
+          },
+        }),
+      ]),
+    );
+    const countByStatus = (statuses: TicketStatus[]) =>
+      groups
+        .filter((item) => statuses.includes(item.status))
+        .reduce((sum, item) => sum + item._count._all, 0);
+    const countByPriority = (priority: TicketPriority) =>
+      groups
+        .filter((item) => item.priority === priority)
+        .reduce((sum, item) => sum + item._count._all, 0);
+    response.json({
+      summary: {
+        total: groups.reduce((sum, item) => sum + item._count._all, 0),
+        open: countByStatus([TicketStatus.ABERTO]),
+        inTriage: countByStatus([TicketStatus.EM_TRIAGEM]),
+        inProgress: countByStatus([TicketStatus.EM_ATENDIMENTO]),
+        waitingForEmployee: countByStatus([TicketStatus.AGUARDANDO_FUNCIONARIO]),
+        reopened: countByStatus([TicketStatus.REABERTO]),
+        resolved: countByStatus([TicketStatus.RESOLVIDO, TicketStatus.FECHADO]),
+      },
+      byPriority: {
+        BAIXA: countByPriority(TicketPriority.BAIXA),
+        MEDIA: countByPriority(TicketPriority.MEDIA),
+        ALTA: countByPriority(TicketPriority.ALTA),
+        CRITICA: countByPriority(TicketPriority.CRITICA),
+      },
+      recentTickets: recentTickets.map((ticket) => ({
+        ...toTicketListDto(ticket),
+        requester: ticket.requesterNameSnapshot,
+        unit: ticket.unitNameSnapshot,
+      })),
+    });
+  });
 
   router.get('/categories', requireFuncionario, async (_request, response) => {
     const categories = await database.ticketCategory.findMany({

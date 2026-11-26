@@ -17,7 +17,13 @@ import {
   RegisterPage,
   SimpleAuthPage,
 } from './auth/AuthPages';
-import { TicketDetailPage, TicketListPage, TiQueuePage } from './tickets/TicketPages';
+import {
+  TicketCreatePage,
+  TicketDetailPage,
+  TicketListPage,
+  TiQueuePage,
+} from './tickets/TicketPages';
+import { EmployeeDashboardPage, TiDashboardPage } from './tickets/DashboardPages';
 
 type ApiStatus = 'checking' | 'online' | 'offline';
 type ReadinessResponse = { dependencies?: { mysql?: string } };
@@ -163,8 +169,8 @@ function FoundationPage() {
                 {user && (
                   <p className="signed-in">
                     Sessão ativa para {user.email}.{' '}
-                    <Link to={user.role === 'TI' ? '/ti/chamados' : '/portal/chamados'}>
-                      {user.role === 'TI' ? 'Fila de atendimento' : 'Meus chamados'}
+                    <Link to={user.role === 'TI' ? '/ti' : '/portal'}>
+                      {user.role === 'TI' ? 'Painel de atendimento' : 'Meu painel'}
                     </Link>{' '}
                     · <Link to="/auth/connections">Gerenciar métodos de acesso</Link>
                   </p>
@@ -282,6 +288,30 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<FoundationPage />} />
+      <Route
+        path="/portal"
+        element={
+          <EmployeeRoute>
+            <EmployeeDashboardPage />
+          </EmployeeRoute>
+        }
+      />
+      <Route
+        path="/ti"
+        element={
+          <TiRoute>
+            <TiDashboardPage />
+          </TiRoute>
+        }
+      />
+      <Route
+        path="/portal/chamados/novo"
+        element={
+          <EmployeeRoute>
+            <TicketCreatePage />
+          </EmployeeRoute>
+        }
+      />
       <Route
         path="/portal/chamados"
         element={

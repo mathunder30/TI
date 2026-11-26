@@ -568,6 +568,131 @@ integration('abertura de chamados no MySQL', () => {
     expect((await getTickets(tiId, '/ti?sort=requesterEmail')).status).toBe(400);
   });
 
+  it('calcula dashboards por perfil, status, prioridade e unidade a partir dos registros reais', async () => {
+    const statuses = [
+      TicketStatus.ABERTO,
+      TicketStatus.EM_TRIAGEM,
+      TicketStatus.EM_ATENDIMENTO,
+      TicketStatus.AGUARDANDO_FUNCIONARIO,
+      TicketStatus.RESOLVIDO,
+      TicketStatus.FECHADO,
+      TicketStatus.REABERTO,
+    ];
+    const createdIds: string[] = [];
+    for (const [index, status] of statuses.entries()) {
+      const created = await openTicket(requesterId, {
+        title: `Dashboard status ${status} ${suffix}`,
+        description: 'Chamado de teste dos indicadores do painel operacional.',
+        categoryId,
+        priority: (Object.values(TicketPriority) as TicketPriority[])[index % 4],
+      });
+      expect(created.status).toBe(201);
+      const id = created.body.ticket.id as string;
+      createdIds.push(id);
+      if (status !== TicketStatus.ABERTO)
+        await prisma.ticket.update({ where: { id }, data: { status } });
+    }
+
+    const crossUnitTicket = await prisma.ticket.create({
+      data: {
+        number: `SC-2098-${String(90000 + Math.floor(Math.random() * 9999)).slice(0, 5)}`,
+        title: `Chamado unidade B ${suffix}`,
+        description: 'Registro para verificar o escopo global do painel TI.',
+        status: TicketStatus.REABERTO,
+        priority: TicketPriority.CRITICA,
+        suggestedPriority: TicketPriority.ALTA,
+        requesterUserId: inactiveUnitUserId,
+        requesterNameSnapshot: `Teste X${suffix}`,
+        requesterEmailSnapshot: `x${suffix.toLowerCase()}@example.invalid`,
+        departmentId: departmentBId,
+        departmentNameSnapshot: `Teste setor B ${suffix}`,
+        unitId: unitBId,
+        unitNameSnapshot: `Teste unidade B ${suffix}`,
+        categoryId,
+        categoryNameSnapshot: `Teste categoria ${suffix}`,
+      },
+    });
+    createdIds.push(crossUnitTicket.id);
+
+    const employeeDashboard = await getTickets(requesterId, '/dashboard/employee');
+    expect(employeeDashboard.status).toBe(200);
+    const ownGroups = await prisma.ticket.groupBy({
+      by: ['status', 'priority'],
+      where: { requesterUserId: requesterId },
+      _count: { _all: true },
+    });
+    const countOwn = (selected: TicketStatus[]) =>
+      ownGroups
+        .filter((row) => selected.includes(row.status))
+        .reduce((sum, row) => sum + row._count._all, 0);
+    expect(employeeDashboard.body.summary).toEqual({
+      open: countOwn([TicketStatus.ABERTO, TicketStatus.EM_TRIAGEM, TicketStatus.REABERTO]),
+      inProgress: countOwn([TicketStatus.EM_ATENDIMENTO]),
+      waitingForEmployee: countOwn([TicketStatus.AGUARDANDO_FUNCIONARIO]),
+      resolved: countOwn([TicketStatus.RESOLVIDO, TicketStatus.FECHADO]),
+    });
+    expect(
+      employeeDashboard.body.recentTickets.map((ticket: { id: string }) => ticket.id),
+    ).not.toContain(crossUnitTicket.id);
+    expect(JSON.stringify(employeeDashboard.body)).not.toContain('requesterUserId');
+
+    const emptyEmployee = await createUser({
+      suffix: `E${suffix}`,
+      unitId: unitAId,
+      departmentId: departmentAId,
+    });
+    const emptyDashboard = await getTickets(emptyEmployee.id, '/dashboard/employee');
+    expect(emptyDashboard.status).toBe(200);
+    expect(emptyDashboard.body.summary).toEqual({
+      open: 0,
+      inProgress: 0,
+      waitingForEmployee: 0,
+      resolved: 0,
+    });
+    expect(emptyDashboard.body.recentTickets).toEqual([]);
+
+    const tiDashboard = await getTickets(tiId, '/dashboard/ti');
+    expect(tiDashboard.status).toBe(200);
+    const globalGroups = await prisma.ticket.groupBy({
+      by: ['status', 'priority'],
+      _count: { _all: true },
+    });
+    const countGlobalStatus = (selected: TicketStatus[]) =>
+      globalGroups
+        .filter((row) => selected.includes(row.status))
+        .reduce((sum, row) => sum + row._count._all, 0);
+    const countGlobalPriority = (priority: TicketPriority) =>
+      globalGroups
+        .filter((row) => row.priority === priority)
+        .reduce((sum, row) => sum + row._count._all, 0);
+    expect(tiDashboard.body.summary).toEqual({
+      total: globalGroups.reduce((sum, row) => sum + row._count._all, 0),
+      open: countGlobalStatus([TicketStatus.ABERTO]),
+      inTriage: countGlobalStatus([TicketStatus.EM_TRIAGEM]),
+      inProgress: countGlobalStatus([TicketStatus.EM_ATENDIMENTO]),
+      waitingForEmployee: countGlobalStatus([TicketStatus.AGUARDANDO_FUNCIONARIO]),
+      reopened: countGlobalStatus([TicketStatus.REABERTO]),
+      resolved: countGlobalStatus([TicketStatus.RESOLVIDO, TicketStatus.FECHADO]),
+    });
+    expect(tiDashboard.body.byPriority).toEqual({
+      BAIXA: countGlobalPriority(TicketPriority.BAIXA),
+      MEDIA: countGlobalPriority(TicketPriority.MEDIA),
+      ALTA: countGlobalPriority(TicketPriority.ALTA),
+      CRITICA: countGlobalPriority(TicketPriority.CRITICA),
+    });
+    expect(
+      tiDashboard.body.recentTickets.some((ticket: { unit: string }) =>
+        ticket.unit.includes(`unidade B ${suffix}`),
+      ),
+    ).toBe(true);
+    expect((await getTickets(requesterId, '/dashboard/ti')).status).toBe(403);
+    expect((await getTickets(unprovisionedTiId, '/dashboard/ti')).status).toBe(403);
+    expect((await getTickets(tiId, '/dashboard/employee')).status).toBe(403);
+    expect((await getTickets(requesterId, '/dashboard/employee?unitId=other')).status).toBe(400);
+    await prisma.ticketHistory.deleteMany({ where: { ticketId: { in: createdIds } } });
+    await prisma.ticket.deleteMany({ where: { id: { in: createdIds } } });
+  });
+
   it('valida assinatura real, tipo declarado, limites e autorização dos anexos privados', async () => {
     const own = await openTicket(requesterId, {
       title: 'Anexos do chamado',

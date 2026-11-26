@@ -13,7 +13,7 @@ import {
   Search,
   TicketCheck,
 } from 'lucide-react';
-import { Link, useParams, useSearchParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { apiErrorMessage, apiFetch, apiUrl } from '../lib/api';
 import { useAuth } from '../auth/useAuth';
 
@@ -128,7 +128,7 @@ function PriorityLabel({ priority }: { priority: TicketPriority }) {
   );
 }
 
-function TicketShell({ title, children }: { title: string; children: ReactNode }) {
+export function TicketShell({ title, children }: { title: string; children: ReactNode }) {
   const { user } = useAuth();
   const isTi = user?.role === 'TI';
   return (
@@ -143,9 +143,21 @@ function TicketShell({ title, children }: { title: string; children: ReactNode }
         </Link>
         <div className="sidebar-label">{isTi ? 'PORTAL DE TI' : 'PORTAL DO FUNCIONÁRIO'}</div>
         <Link
-          className="nav-current"
+          className={title === 'Visão geral' ? 'nav-current' : 'nav-link'}
+          to={isTi ? '/ti' : '/portal'}
+          aria-current={title === 'Visão geral' ? 'page' : undefined}
+        >
+          <Layers3 size={18} strokeWidth={1.8} />
+          <span>Visão geral</span>
+        </Link>
+        <Link
+          className={
+            title === (isTi ? 'Fila de atendimento' : 'Meus chamados') ? 'nav-current' : 'nav-link'
+          }
           to={isTi ? '/ti/chamados' : '/portal/chamados'}
-          aria-current="page"
+          aria-current={
+            title === (isTi ? 'Fila de atendimento' : 'Meus chamados') ? 'page' : undefined
+          }
         >
           <TicketCheck size={18} strokeWidth={1.8} />
           <span>{isTi ? 'Fila de atendimento' : 'Meus chamados'}</span>
@@ -198,6 +210,155 @@ function TicketLoadError({ message, onRetry }: { message: string; onRetry: () =>
 
 function activeFilterKey(params: URLSearchParams) {
   return ['q', 'status', 'priority', 'categoryId'].map((key) => params.get(key) ?? '').join('|');
+}
+
+export function TicketCreatePage() {
+  const { user, csrfToken } = useAuth();
+  const navigate = useNavigate();
+  const [categories, setCategories] = useState<LoadState<Category[]>>({
+    key: 'categories',
+    status: 'loading',
+  });
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    apiFetch('/api/v1/tickets/categories', { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await apiErrorMessage(response));
+        return response.json() as Promise<{ categories: Category[] }>;
+      })
+      .then((data) =>
+        setCategories({ key: 'categories', status: 'success', data: data.categories }),
+      )
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted)
+          setCategories({
+            key: 'categories',
+            status: 'error',
+            message: cause instanceof Error ? cause.message : 'Falha ao carregar categorias.',
+          });
+      });
+    return () => controller.abort();
+  }, []);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setSaving(true);
+    const data = new FormData(event.currentTarget);
+    try {
+      const response = await apiFetch('/api/v1/tickets', {
+        method: 'POST',
+        headers: csrfToken ? { 'x-csrf-token': csrfToken } : undefined,
+        body: JSON.stringify({
+          title: String(data.get('title') ?? ''),
+          description: String(data.get('description') ?? ''),
+          categoryId: String(data.get('categoryId') ?? ''),
+          priority: String(data.get('priority') ?? 'MEDIA'),
+        }),
+      });
+      if (!response.ok) throw new Error(await apiErrorMessage(response));
+      const result = (await response.json()) as { ticket: { id: string } };
+      navigate(`/portal/chamados/${encodeURIComponent(result.ticket.id)}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível abrir o chamado.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <TicketShell title="Abrir chamado">
+      <div className="ticket-page-heading">
+        <div>
+          <p className="eyebrow">
+            <TicketCheck size={15} /> NOVA SOLICITAÇÃO
+          </p>
+          <h1>Abrir chamado</h1>
+          <p className="page-intro">
+            Descreva o que precisa de suporte. Seus dados de unidade e setor vêm do perfil.
+          </p>
+        </div>
+      </div>
+      <form className="ticket-create-card ticket-create-form" onSubmit={submit}>
+        <div className="ticket-profile-snapshot">
+          <div>
+            <span>Funcionário</span>
+            <strong>{user?.fullName}</strong>
+          </div>
+          <div>
+            <span>Unidade</span>
+            <strong>{user?.unit.name}</strong>
+          </div>
+          <div>
+            <span>Setor</span>
+            <strong>{user?.department.name}</strong>
+          </div>
+        </div>
+        <label>
+          Título
+          <input name="title" required minLength={5} maxLength={200} />
+        </label>
+        <label>
+          Descrição
+          <textarea name="description" required minLength={10} maxLength={10000} rows={6} />
+        </label>
+        <div className="ticket-create-row">
+          <label>
+            Categoria
+            <select
+              name="categoryId"
+              required
+              disabled={categories.status !== 'success'}
+              defaultValue=""
+            >
+              <option value="" disabled>
+                {categories.status === 'loading' ? 'Carregando…' : 'Selecione'}
+              </option>
+              {categories.status === 'success' &&
+                categories.data.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Prioridade sugerida
+            <select name="priority" defaultValue="MEDIA">
+              <option value="BAIXA">Baixa</option>
+              <option value="MEDIA">Média</option>
+              <option value="ALTA">Alta</option>
+              <option value="CRITICA">Crítica</option>
+            </select>
+          </label>
+        </div>
+        {categories.status === 'error' && (
+          <p className="form-error" role="alert">
+            Não foi possível carregar as categorias: {categories.message}
+          </p>
+        )}
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="ticket-create-actions">
+          <Link className="button button-secondary" to="/portal">
+            Cancelar
+          </Link>
+          <button
+            className="button button-primary"
+            type="submit"
+            disabled={saving || categories.status !== 'success'}
+          >
+            {saving ? 'Enviando…' : 'Enviar chamado'}
+          </button>
+        </div>
+      </form>
+    </TicketShell>
+  );
 }
 
 export function TicketListPage() {
