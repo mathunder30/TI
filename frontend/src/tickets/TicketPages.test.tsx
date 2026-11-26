@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { AuthProvider } from '../auth/AuthContext';
-import { TicketDetailPage, TicketListPage } from './TicketPages';
+import { TicketDetailPage, TicketListPage, TiQueuePage } from './TicketPages';
 
 afterEach(() => {
   cleanup();
@@ -162,5 +162,78 @@ describe('portal do funcionário', () => {
       ([input, init]) => String(input).endsWith('/messages') && init?.method === 'POST',
     );
     expect(new Headers(sendCall?.[1]?.headers).get('x-csrf-token')).toBe('csrf-test');
+  });
+
+  it('carrega a fila TI e envia filtros à API', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (url.pathname === '/api/v1/auth/session')
+        return response({
+          csrfToken: 'csrf-ti',
+          user: {
+            id: 'ti-1',
+            fullName: 'Responsável TI',
+            email: 'ti@example.com',
+            role: 'TI',
+            unit: { id: 'unit-1', name: 'Unidade Centro' },
+            department: { id: 'dept-1', name: 'TI' },
+            authProviders: ['PASSWORD'],
+          },
+        });
+      if (url.pathname === '/api/v1/tickets/ti')
+        return response({
+          items: [
+            {
+              id: 'ticket-1',
+              number: 'SC-2026-00001',
+              title: 'Fila da recepção',
+              category: 'Equipamentos',
+              priority: 'ALTA',
+              status: 'ABERTO',
+              requester: 'Ana Funcionária',
+              unit: 'Unidade Centro',
+              createdAt: '2026-11-20T12:00:00Z',
+              updatedAt: '2026-11-21T12:00:00Z',
+            },
+          ],
+          pagination: {
+            page: 1,
+            pageSize: 20,
+            totalItems: 1,
+            totalPages: 1,
+            hasPreviousPage: false,
+            hasNextPage: false,
+          },
+        });
+      return response({ message: 'Not found' }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/ti/chamados']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/ti/chamados" element={<TiQueuePage />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Fila da recepção')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'recepção' } });
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'ABERTO' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar filtros' }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => {
+          const url = new URL(String(input), 'http://localhost');
+          return (
+            url.pathname === '/api/v1/tickets/ti' &&
+            url.searchParams.get('q') === 'recepção' &&
+            url.searchParams.get('status') === 'ABERTO'
+          );
+        }),
+      ).toBe(true),
+    );
   });
 });

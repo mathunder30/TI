@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { basename, extname, relative, resolve, sep } from 'node:path';
+import { chmod, mkdir, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { basename, dirname, extname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { RequestHandler } from 'express';
 import multer from 'multer';
-import { fileTypeFromBuffer } from 'file-type';
+import { fileTypeFromFile } from 'file-type';
 import {
   TicketEventType,
   UserRole,
@@ -27,29 +27,51 @@ if (
 }
 
 export const attachmentUpload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: attachmentStorageDirectory,
+    filename: (_request, _file, callback) => callback(null, `${randomUUID()}.uploading`),
+  }),
   limits: { fileSize: env.ATTACHMENT_MAX_SIZE_BYTES, files: 1, fields: 0, parts: 1 },
 });
 
+async function ensurePrivateStorageDirectory() {
+  await mkdir(attachmentStorageDirectory, { recursive: true, mode: 0o700 });
+  await chmod(attachmentStorageDirectory, 0o700);
+  const storageRealPath = await realpath(attachmentStorageDirectory);
+  const publicRealPath = await realpath(publicDirectory).catch(() => publicDirectory);
+  const pathFromPublic = relative(publicRealPath, storageRealPath);
+  if (
+    pathFromPublic === '' ||
+    (!pathFromPublic.startsWith(`..${sep}`) && pathFromPublic !== '..')
+  ) {
+    throw new Error('ATTACHMENT_STORAGE_DIR precisa resolver para fora da pasta pública.');
+  }
+  return storageRealPath;
+}
+
 export const receiveAttachment: RequestHandler = (request, response, next) => {
-  attachmentUpload.single('file')(request, response, (error: unknown) => {
-    if (error instanceof multer.MulterError) {
-      next(
-        new HttpError(
-          error.code === 'LIMIT_FILE_SIZE' ? 413 : 400,
-          error.code === 'LIMIT_FILE_SIZE'
-            ? 'O anexo excede o limite configurado.'
-            : 'Envie somente um arquivo no campo file.',
-        ),
-      );
-      return;
-    }
-    if (error) {
-      next(error);
-      return;
-    }
-    next();
-  });
+  void ensurePrivateStorageDirectory()
+    .then(() => {
+      attachmentUpload.single('file')(request, response, (error: unknown) => {
+        if (error instanceof multer.MulterError) {
+          next(
+            new HttpError(
+              error.code === 'LIMIT_FILE_SIZE' ? 413 : 400,
+              error.code === 'LIMIT_FILE_SIZE'
+                ? 'O anexo excede o limite configurado.'
+                : 'Envie somente um arquivo no campo file.',
+            ),
+          );
+          return;
+        }
+        if (error) {
+          next(error);
+          return;
+        }
+        next();
+      });
+    })
+    .catch(next);
 };
 
 type Actor = { id: string; fullName: string; role: UserRole };
@@ -78,31 +100,35 @@ export async function storeTicketAttachment(
   file: Express.Multer.File | undefined,
 ) {
   if (!file) throw new HttpError(400, 'Selecione um arquivo para anexar.');
-  if (file.size > env.ATTACHMENT_MAX_SIZE_BYTES)
-    throw new HttpError(413, 'O anexo excede o limite configurado.');
-  const originalName = safeOriginalName(file.originalname);
-  const extension = extname(originalName).toLowerCase();
-  const expectedMime = allowedMimeByExtension[extension];
-  if (!expectedMime || file.mimetype !== expectedMime) {
-    throw new HttpError(400, 'Envie JPG, JPEG, PNG ou PDF com extensão e MIME correspondentes.');
-  }
-  const detected = await fileTypeFromBuffer(file.buffer);
-  if (
-    !detected ||
-    detected.mime !== expectedMime ||
-    (expectedMime === 'application/pdf' && detected.ext !== 'pdf')
-  ) {
-    throw new HttpError(400, 'O conteúdo real do arquivo não corresponde ao tipo declarado.');
-  }
-
   const id = randomUUID();
-  const storageKey = `${id}${extension}`;
-  const stagedPath = resolve(attachmentStorageDirectory, `${id}.uploading`);
-  const storedPath = resolve(attachmentStorageDirectory, storageKey);
+  const stagedInputPath = resolve(file.path);
+  let storedPath: string | undefined;
   try {
-    await mkdir(attachmentStorageDirectory, { recursive: true, mode: 0o700 });
-    await chmod(attachmentStorageDirectory, 0o700);
-    await writeFile(stagedPath, file.buffer, { flag: 'wx', mode: 0o600 });
+    if (file.size > env.ATTACHMENT_MAX_SIZE_BYTES)
+      throw new HttpError(413, 'O anexo excede o limite configurado.');
+    const originalName = safeOriginalName(file.originalname);
+    const extension = extname(originalName).toLowerCase();
+    const expectedMime = allowedMimeByExtension[extension];
+    if (!expectedMime || file.mimetype !== expectedMime) {
+      throw new HttpError(400, 'Envie JPG, JPEG, PNG ou PDF com extensão e MIME correspondentes.');
+    }
+    const detected = await fileTypeFromFile(file.path);
+    if (
+      !detected ||
+      detected.mime !== expectedMime ||
+      (expectedMime === 'application/pdf' && detected.ext !== 'pdf')
+    ) {
+      throw new HttpError(400, 'O conteúdo real do arquivo não corresponde ao tipo declarado.');
+    }
+
+    const storageKey = `${id}${extension}`;
+    const finalPath = resolve(attachmentStorageDirectory, storageKey);
+    storedPath = finalPath;
+    const storageRealPath = await ensurePrivateStorageDirectory();
+    const stagedPath = await realpath(file.path);
+    if (dirname(stagedPath) !== storageRealPath) {
+      throw new HttpError(400, 'Caminho temporário de anexo inválido.');
+    }
     const attachment = await database.$transaction(async (transaction) => {
       await transaction.$queryRaw<
         Array<{ id: string }>
@@ -120,7 +146,8 @@ export async function storeTicketAttachment(
       if (count >= env.ATTACHMENT_MAX_PER_TICKET) {
         throw new HttpError(409, 'Este chamado atingiu o limite de anexos.');
       }
-      await rename(stagedPath, storedPath);
+      await rename(stagedPath, finalPath);
+      await chmod(finalPath, 0o600);
       const created = await transaction.ticketAttachment.create({
         data: {
           ticketId,
@@ -169,7 +196,10 @@ export async function storeTicketAttachment(
     });
     return attachment;
   } catch (error) {
-    await Promise.all([rm(stagedPath, { force: true }), rm(storedPath, { force: true })]);
+    await Promise.all([
+      rm(stagedInputPath, { force: true }),
+      ...(storedPath ? [rm(storedPath, { force: true })] : []),
+    ]);
     throw error;
   }
 }

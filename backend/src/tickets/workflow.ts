@@ -107,25 +107,6 @@ export async function createPublicMessage(
         previousValue: TicketStatus.AGUARDANDO_FUNCIONARIO,
         newValue: TicketStatus.EM_ATENDIMENTO,
       });
-    } else if (
-      actor.role === UserRole.TI &&
-      (
-        [
-          TicketStatus.ABERTO,
-          TicketStatus.EM_TRIAGEM,
-          TicketStatus.REABERTO,
-          TicketStatus.AGUARDANDO_FUNCIONARIO,
-        ] as TicketStatus[]
-      ).includes(ticket.status)
-    ) {
-      await transaction.ticket.update({
-        where: { id: ticketId },
-        data: { status: TicketStatus.EM_ATENDIMENTO },
-      });
-      await addHistory(transaction, ticketId, actor, TicketEventType.ALTERACAO_STATUS, {
-        previousValue: ticket.status,
-        newValue: TicketStatus.EM_ATENDIMENTO,
-      });
     }
     await logAdminAction(
       transaction,
@@ -200,9 +181,9 @@ export async function changeTicketStatus(
   return database.$transaction(async (transaction) => {
     const ticket = await lockAndFindTicket(transaction, ticketId, actor);
     const allowed: Record<string, TicketStatus[]> = {
-      [TicketStatus.ABERTO]: [TicketStatus.EM_TRIAGEM, TicketStatus.EM_ATENDIMENTO],
+      [TicketStatus.ABERTO]: [TicketStatus.EM_TRIAGEM],
       [TicketStatus.EM_TRIAGEM]: [TicketStatus.EM_ATENDIMENTO],
-      [TicketStatus.REABERTO]: [TicketStatus.EM_TRIAGEM, TicketStatus.EM_ATENDIMENTO],
+      [TicketStatus.REABERTO]: [TicketStatus.EM_TRIAGEM],
       [TicketStatus.AGUARDANDO_FUNCIONARIO]: [TicketStatus.EM_ATENDIMENTO],
       [TicketStatus.EM_ATENDIMENTO]: [TicketStatus.EM_ATENDIMENTO],
     };
@@ -234,11 +215,7 @@ export async function resolveTicket(
 ) {
   return database.$transaction(async (transaction) => {
     const ticket = await lockAndFindTicket(transaction, ticketId, actor);
-    if (
-      !([TicketStatus.EM_ATENDIMENTO, TicketStatus.REABERTO] as TicketStatus[]).includes(
-        ticket.status,
-      )
-    ) {
+    if (ticket.status !== TicketStatus.EM_ATENDIMENTO) {
       throw new HttpError(
         409,
         'O chamado precisa estar em atendimento antes de registrar a solução.',

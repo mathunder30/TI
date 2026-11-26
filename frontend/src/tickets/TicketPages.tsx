@@ -453,27 +453,60 @@ type TiQueueItem = TicketListItem & { requester: string; unit: string };
 type TiQueueData = { items: TiQueueItem[]; pagination: TicketPageData['pagination'] };
 
 export function TiQueuePage() {
-  const [result, setResult] = useState<LoadState<TiQueueData>>({ key: 'queue', status: 'loading' });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryKey = searchParams.toString();
+  const [result, setResult] = useState<LoadState<TiQueueData>>({
+    key: queryKey,
+    status: 'loading',
+  });
   const [retry, setRetry] = useState(0);
-  const [page, setPage] = useState(1);
+  const page = Number(searchParams.get('page') || '1');
+  const filterKey = ['q', 'status', 'priority'].map((key) => searchParams.get(key) ?? '').join('|');
   useEffect(() => {
     const controller = new AbortController();
-    apiFetch(`/api/v1/tickets/ti?page=${page}&pageSize=20`, { signal: controller.signal })
+    const query = new URLSearchParams(queryKey);
+    query.set('page', String(page));
+    query.set('pageSize', '20');
+    apiFetch(`/api/v1/tickets/ti?${query.toString()}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(await apiErrorMessage(response));
         return response.json() as Promise<TiQueueData>;
       })
-      .then((data) => setResult({ key: 'queue', status: 'success', data }))
+      .then((data) => setResult({ key: queryKey, status: 'success', data }))
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
           setResult({
-            key: 'queue',
+            key: queryKey,
             status: 'error',
             message: error instanceof Error ? error.message : 'Falha na consulta.',
           });
       });
     return () => controller.abort();
-  }, [page, retry]);
+  }, [page, queryKey, retry]);
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const next = new URLSearchParams();
+    for (const field of ['q', 'status', 'priority']) {
+      const value = String(form.get(field) ?? '').trim();
+      if (value) next.set(field, value);
+    }
+    next.set('page', '1');
+    next.set('pageSize', '20');
+    setSearchParams(next);
+  }
+
+  function changePage(nextPage: number) {
+    const next = new URLSearchParams(searchParams);
+    next.set('page', String(nextPage));
+    next.set('pageSize', '20');
+    setSearchParams(next);
+  }
+
+  const loading = result.key !== queryKey || result.status === 'loading';
+  const error = result.key === queryKey && result.status === 'error' ? result.message : null;
+  const data = result.key === queryKey && result.status === 'success' ? result.data : null;
 
   return (
     <TicketShell title="Fila de atendimento">
@@ -485,25 +518,62 @@ export function TiQueuePage() {
           <h1>Fila de atendimento</h1>
           <p className="page-intro">Chamados recebidos para triagem e atendimento.</p>
         </div>
-        {result.status === 'success' && (
-          <div className="ticket-count">{result.data.pagination.totalItems} chamados</div>
-        )}
+        {data && <div className="ticket-count">{data.pagination.totalItems} chamados</div>}
       </div>
-      {result.status === 'loading' && (
+      <form className="ticket-filters" onSubmit={applyFilters} key={filterKey}>
+        <label>
+          Pesquisar
+          <span className="ticket-search-input">
+            <Search size={16} />
+            <input
+              name="q"
+              type="search"
+              defaultValue={searchParams.get('q') ?? ''}
+              placeholder="Protocolo ou título"
+            />
+          </span>
+        </label>
+        <label>
+          Status
+          <select name="status" defaultValue={searchParams.get('status') ?? ''}>
+            <option value="">Todos</option>
+            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Prioridade
+          <select name="priority" defaultValue={searchParams.get('priority') ?? ''}>
+            <option value="">Todas</option>
+            {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button className="button button-primary" type="submit">
+          Aplicar filtros
+        </button>
+      </form>
+      {loading && (
         <div className="ticket-state" role="status">
           <Activity size={18} className="ticket-spinner" /> Carregando chamados…
         </div>
       )}
-      {result.status === 'error' && (
-        <TicketLoadError message={result.message} onRetry={() => setRetry((count) => count + 1)} />
+      {!loading && error && (
+        <TicketLoadError message={error} onRetry={() => setRetry((count) => count + 1)} />
       )}
-      {result.status === 'success' && result.data.items.length === 0 && (
+      {!loading && !error && data?.items.length === 0 && (
         <div className="ticket-state ticket-state--empty">
           <TicketCheck size={25} />
           <strong>Nenhum chamado recebido</strong>
         </div>
       )}
-      {result.status === 'success' && result.data.items.length > 0 && (
+      {!loading && !error && data && data.items.length > 0 && (
         <>
           <div className="ticket-table-wrap">
             <table className="ticket-table">
@@ -520,7 +590,7 @@ export function TiQueuePage() {
                 </tr>
               </thead>
               <tbody>
-                {result.data.items.map((ticket) => (
+                {data.items.map((ticket) => (
                   <tr key={ticket.id}>
                     <td>
                       <Link className="ticket-number" to={`/ti/chamados/${ticket.id}`}>
@@ -553,21 +623,21 @@ export function TiQueuePage() {
           </div>
           <div className="ticket-pagination">
             <span>
-              {result.data.pagination.totalItems} chamados · Página {page} de{' '}
-              {Math.max(result.data.pagination.totalPages, 1)}
+              {data.pagination.totalItems} chamados · Página {data.pagination.page} de{' '}
+              {Math.max(data.pagination.totalPages, 1)}
             </span>
             <div>
               <button
                 className="button button-secondary"
-                disabled={!result.data.pagination.hasPreviousPage}
-                onClick={() => setPage((current) => current - 1)}
+                disabled={!data.pagination.hasPreviousPage}
+                onClick={() => changePage(page - 1)}
               >
                 <ArrowLeft size={15} /> Anterior
               </button>
               <button
                 className="button button-secondary"
-                disabled={!result.data.pagination.hasNextPage}
-                onClick={() => setPage((current) => current + 1)}
+                disabled={!data.pagination.hasNextPage}
+                onClick={() => changePage(page + 1)}
               >
                 Próxima <ArrowRight size={15} />
               </button>
@@ -934,9 +1004,7 @@ export function TicketDetailPage() {
                   Iniciar triagem
                 </button>
               )}
-              {['ABERTO', 'EM_TRIAGEM', 'REABERTO', 'AGUARDANDO_FUNCIONARIO'].includes(
-                data.ticket.status,
-              ) && (
+              {['EM_TRIAGEM', 'AGUARDANDO_FUNCIONARIO'].includes(data.ticket.status) && (
                 <button
                   className="button button-secondary"
                   disabled={busy}
@@ -972,7 +1040,7 @@ export function TicketDetailPage() {
                   </button>
                 </form>
               )}
-              {['EM_ATENDIMENTO', 'REABERTO'].includes(data.ticket.status) && (
+              {data.ticket.status === 'EM_ATENDIMENTO' && (
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();

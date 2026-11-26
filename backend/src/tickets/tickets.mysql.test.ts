@@ -1,6 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { rm } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -20,7 +21,7 @@ import { errorHandler } from '../http/errors.js';
 import { createTicketsRouter } from './router.js';
 import { createTicketInTransaction } from './service.js';
 import { env } from '../config/env.js';
-import { attachmentStorageDirectory } from './attachments.js';
+import { attachmentStorageDirectory, storeTicketAttachment } from './attachments.js';
 
 const runIntegrationRequested = process.env.RUN_MYSQL_INTEGRATION === '1';
 const localDatabaseHost = ['127.0.0.1', 'localhost'].includes(new URL(env.DATABASE_URL).hostname);
@@ -320,6 +321,20 @@ integration('abertura de chamados no MySQL', () => {
       priority: 'MEDIA',
     });
     const ticketId = opened.body.ticket.id as string;
+    expect(
+      (
+        await mutateTicket(requesterId, 'post', `/${ticketId}/request-information`, {
+          body: 'Solicito retorno por favor.',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await mutateTicket(requesterId, 'post', `/${ticketId}/resolve`, {
+          resolution: 'Solução inventada enviada pelo funcionário.',
+        })
+      ).status,
+    ).toBe(403);
     const employeeMessage = await mutateTicket(requesterId, 'post', `/${ticketId}/messages`, {
       body: 'Segue mais contexto para o atendimento.',
     });
@@ -328,6 +343,9 @@ integration('abertura de chamados no MySQL', () => {
       body: 'Recebemos os detalhes e estamos verificando.',
     });
     expect(tiMessage.status).toBe(201);
+    expect((await prisma.ticket.findUnique({ where: { id: ticketId } }))?.status).toBe(
+      TicketStatus.ABERTO,
+    );
     expect(
       (
         await mutateTicket(otherRequesterId, 'post', `/${ticketId}/messages`, {
@@ -396,6 +414,10 @@ integration('abertura de chamados no MySQL', () => {
     });
     const ticketId = opened.body.ticket.id as string;
     expect(
+      (await mutateTicket(tiId, 'patch', `/${ticketId}/status`, { status: 'EM_ATENDIMENTO' }))
+        .status,
+    ).toBe(409);
+    expect(
       (await mutateTicket(requesterId, 'patch', `/${ticketId}/status`, { status: 'EM_TRIAGEM' }))
         .status,
     ).toBe(403);
@@ -451,7 +473,25 @@ integration('abertura de chamados no MySQL', () => {
     const secondResolution = await mutateTicket(tiId, 'post', `/${ticketId}/resolve`, {
       resolution: 'Configuração corrigida e novo teste de conexão concluído.',
     });
-    expect(secondResolution.status).toBe(200);
+    expect(secondResolution.status).toBe(409);
+    expect(
+      (await mutateTicket(tiId, 'patch', `/${ticketId}/status`, { status: 'EM_TRIAGEM' })).status,
+    ).toBe(200);
+    expect(
+      (
+        await mutateTicket(tiId, 'post', `/${ticketId}/resolve`, {
+          resolution: 'Configuração corrigida e novo teste de conexão concluído.',
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (await mutateTicket(tiId, 'patch', `/${ticketId}/status`, { status: 'EM_ATENDIMENTO' }))
+        .status,
+    ).toBe(200);
+    const finalResolution = await mutateTicket(tiId, 'post', `/${ticketId}/resolve`, {
+      resolution: 'Configuração corrigida e novo teste de conexão concluído.',
+    });
+    expect(finalResolution.status).toBe(200);
     const confirmation = await mutateTicket(
       requesterId,
       'post',
@@ -460,6 +500,9 @@ integration('abertura de chamados no MySQL', () => {
     );
     expect(confirmation.status).toBe(200);
     expect(confirmation.body.ticket.status).toBe(TicketStatus.FECHADO);
+    expect(
+      (await mutateTicket(tiId, 'patch', `/${ticketId}/status`, { status: 'EM_TRIAGEM' })).status,
+    ).toBe(409);
     expect(
       (
         await mutateTicket(requesterId, 'post', `/${ticketId}/messages`, {
@@ -513,6 +556,16 @@ integration('abertura de chamados no MySQL', () => {
     expect(queue.body.items.map((item: { requester: string }) => item.requester)).toContain(
       `Teste R${suffix}`,
     );
+    const filtered = await getTickets(
+      tiId,
+      '/ti?status=ABERTO&priority=MEDIA&q=Chamado&page=1&pageSize=1',
+    );
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.items).toHaveLength(1);
+    expect(filtered.body.items[0].title).toBe('Chamado na fila TI');
+    expect(filtered.body.pagination.pageSize).toBe(1);
+    expect((await getTickets(tiId, '/ti?pageSize=51')).status).toBe(400);
+    expect((await getTickets(tiId, '/ti?sort=requesterEmail')).status).toBe(400);
   });
 
   it('valida assinatura real, tipo declarado, limites e autorização dos anexos privados', async () => {
@@ -560,7 +613,18 @@ integration('abertura de chamados no MySQL', () => {
     const downloaded = await getTickets(requesterId, `/${ticketId}/attachments/${attachmentId}`);
     expect(downloaded.status).toBe(200);
     expect(downloaded.headers['content-type']).toContain('image/png');
+    expect(downloaded.headers['content-disposition']).toContain('attachment');
+    expect(downloaded.headers['x-content-type-options']).toBe('nosniff');
     expect(Buffer.compare(downloaded.body as Buffer, png)).toBe(0);
+    const listed = await getTickets(requesterId, `/${ticketId}/attachments`);
+    expect(listed.status).toBe(200);
+    expect(listed.body.attachments[0]).toMatchObject({
+      id: attachmentId,
+      originalName: 'evidencia.png',
+      byteSize: png.byteLength,
+    });
+    expect(listed.body.attachments[0]).not.toHaveProperty('storageKey');
+    expect(listed.body.attachments[0]).not.toHaveProperty('uploadedByUserId');
     expect(
       (await getTickets(otherRequesterId, `/${ticketId}/attachments/${attachmentId}`)).status,
     ).toBe(404);
@@ -606,6 +670,88 @@ integration('abertura de chamados no MySQL', () => {
     expect(
       await prisma.ticketHistory.count({ where: { ticketId, eventType: TicketEventType.ANEXO } }),
     ).toBe(env.ATTACHMENT_MAX_PER_TICKET);
+  });
+
+  it('serializa uploads simultâneos e nunca ultrapassa o limite por chamado', async () => {
+    const opened = await openTicket(requesterId, {
+      title: 'Concorrência de anexos',
+      description: 'Validar o limite de anexos com envios simultâneos ao mesmo chamado.',
+      categoryId,
+      priority: 'BAIXA',
+    });
+    const ticketId = opened.body.ticket.id as string;
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3xkAAAAASUVORK5CYII=',
+      'base64',
+    );
+    const responses = await Promise.all(
+      Array.from({ length: env.ATTACHMENT_MAX_PER_TICKET + 3 }, (_, index) =>
+        attachFile(requesterId, ticketId, png, `paralelo-${index}.png`, 'image/png'),
+      ),
+    );
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(
+      env.ATTACHMENT_MAX_PER_TICKET,
+    );
+    expect(responses.filter((response) => response.status === 409)).toHaveLength(3);
+    expect(await prisma.ticketAttachment.count({ where: { ticketId } })).toBe(
+      env.ATTACHMENT_MAX_PER_TICKET,
+    );
+    expect(
+      await prisma.ticketHistory.count({ where: { ticketId, eventType: TicketEventType.ANEXO } }),
+    ).toBe(env.ATTACHMENT_MAX_PER_TICKET);
+  });
+
+  it('remove arquivo temporário e final quando a transação MySQL falha', async () => {
+    const opened = await openTicket(requesterId, {
+      title: 'Rollback do anexo',
+      description: 'Simular falha da gravação dos metadados depois de mover o arquivo privado.',
+      categoryId,
+      priority: 'BAIXA',
+    });
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3xkAAAAASUVORK5CYII=',
+      'base64',
+    );
+    await mkdir(attachmentStorageDirectory, { recursive: true });
+    const before = new Set(await readdir(attachmentStorageDirectory));
+    const tempName = `rollback-${Date.now()}-${Math.random().toString(16).slice(2)}.uploading`;
+    const tempPath = resolve(attachmentStorageDirectory, tempName);
+    await writeFile(tempPath, png, { flag: 'wx' });
+    const transaction = {
+      $queryRaw: async () => [{ id: opened.body.ticket.id }],
+      ticket: { findFirst: async () => ({ id: opened.body.ticket.id }) },
+      ticketAttachment: {
+        count: async () => 0,
+        create: async () => {
+          throw new Error('SIMULATED_ATTACHMENT_DB_FAILURE');
+        },
+      },
+      ticketHistory: { create: async () => ({}) },
+      auditLog: { create: async () => ({}) },
+    };
+    const failingDatabase = {
+      $transaction: async (callback: (tx: typeof transaction) => Promise<unknown>) =>
+        callback(transaction),
+    } as unknown as typeof prisma;
+
+    await expect(
+      storeTicketAttachment(
+        failingDatabase,
+        opened.body.ticket.id,
+        {
+          id: requesterId,
+          fullName: `Teste R${suffix}`,
+          role: UserRole.FUNCIONARIO,
+        },
+        {
+          path: tempPath,
+          originalname: 'falha.png',
+          mimetype: 'image/png',
+          size: png.byteLength,
+        } as Express.Multer.File,
+      ),
+    ).rejects.toThrow('SIMULATED_ATTACHMENT_DB_FAILURE');
+    expect(await readdir(attachmentStorageDirectory)).toEqual([...before]);
   });
 
   it('lista somente os chamados do funcionário autenticado e retorna DTO público', async () => {

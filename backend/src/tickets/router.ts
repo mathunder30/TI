@@ -420,9 +420,14 @@ export function createTicketsRouter(dependencies = productionDependencies) {
       },
     });
     response.json({
-      attachments: attachments.map(({ uploadedByUserId, ...item }) => ({
-        ...item,
-        uploader: uploadedByUserId === actor.id ? 'Você' : 'TI',
+      attachments: attachments.map((item) => ({
+        id: item.id,
+        originalName: item.originalName,
+        mimeType: item.mimeType,
+        byteSize: Number(item.byteSize),
+        createdAt: item.createdAt,
+        uploaderNameSnapshot: item.uploaderNameSnapshot,
+        uploader: item.uploadedByUserId === actor.id ? 'Você' : 'TI',
       })),
     });
   });

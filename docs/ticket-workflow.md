@@ -29,10 +29,12 @@ são retornados ao funcionário.
 | Origem                                               | Operação                                          | Destino                  |
 | ---------------------------------------------------- | ------------------------------------------------- | ------------------------ |
 | `ABERTO`                                             | TI inicia triagem                                 | `EM_TRIAGEM`             |
-| `ABERTO`, `EM_TRIAGEM`, `REABERTO`                   | TI inicia atendimento                             | `EM_ATENDIMENTO`         |
+| `EM_TRIAGEM`                                         | TI inicia atendimento                             | `EM_ATENDIMENTO`         |
+| `REABERTO`                                           | TI retoma pela triagem                            | `EM_TRIAGEM`             |
+| `AGUARDANDO_FUNCIONARIO`                             | TI retoma atendimento                             | `EM_ATENDIMENTO`         |
 | `ABERTO`, `EM_TRIAGEM`, `EM_ATENDIMENTO`, `REABERTO` | TI solicita informação com mensagem               | `AGUARDANDO_FUNCIONARIO` |
 | `AGUARDANDO_FUNCIONARIO`                             | Funcionário responde por mensagem                 | `EM_ATENDIMENTO`         |
-| `EM_ATENDIMENTO`, `REABERTO`                         | TI registra solução                               | `RESOLVIDO`              |
+| `EM_ATENDIMENTO`                                     | TI registra solução                               | `RESOLVIDO`              |
 | `RESOLVIDO`                                          | Funcionário confirma a solução                    | `FECHADO`                |
 | `RESOLVIDO`                                          | Funcionário solicita reabertura com justificativa | `REABERTO`               |
 
@@ -40,6 +42,12 @@ As transições são serializadas com lock da linha do chamado e falham com `409
 origem não é permitido. A autorização de funcionário consulta simultaneamente o ID do chamado e o
 solicitante da sessão. A fila e ações de TI exigem papel `TI` e vínculo ao único slot em
 `admin_accounts`.
+
+Uma mensagem comum do TI não altera status; somente o endpoint de solicitação de informações e as
+transições explícitas mudam o fluxo. A resposta do funcionário a um chamado em
+`AGUARDANDO_FUNCIONARIO` o retorna a `EM_ATENDIMENTO`. Não há operação de reabertura após
+`FECHADO` nem operação de cancelamento nesta entrega; a reabertura implementada é a solicitação do
+funcionário enquanto o chamado está `RESOLVIDO`.
 
 ## Anexos privados
 
@@ -50,11 +58,13 @@ backend. A pasta padrão `private-attachments/` fica fora de `frontend/public`, 
 estático e está excluída do Git. Os nomes físicos usam UUID aleatório; o nome original é apenas
 metadado para exibição.
 
-O upload cria primeiro um arquivo temporário privado, move para uma chave aleatória sob lock do
-chamado, e grava metadados e evento de histórico na mesma transação MySQL. Em falhas da transação,
-o backend remove tanto o temporário quanto o arquivo final. Como filesystem e MySQL não oferecem
-transação distribuída, uma queda abrupta do processo entre gravação e commit ainda pode deixar um
-órfão; implantação deve incluir rotina periódica de reconciliação de chaves não referenciadas.
+O upload grava em disco um arquivo temporário privado (sem manter o arquivo inteiro em memória),
+move para uma chave aleatória sob lock do chamado e grava metadados e evento de histórico na mesma
+transação MySQL. Em falhas observadas da transação, o backend remove o temporário e o arquivo final.
+Como filesystem e MySQL não oferecem transação distribuída, queda abrupta do processo entre
+gravação e commit, ou resposta de commit ambígua por perda de conexão, ainda pode deixar um arquivo
+órfão ou metadados sem arquivo; implantação deve incluir rotina periódica de reconciliação das
+chaves e dos arquivos sem referência.
 
 Antes de produção, os arquivos devem passar por análise antimalware/quarentena e políticas de
 retenção compatíveis com backup. Configure ACLs restritivas no volume de armazenamento, mantenha-o
