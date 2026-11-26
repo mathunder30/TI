@@ -1,6 +1,11 @@
 import type { RequestHandler } from 'express';
 import { HttpError } from '../http/errors.js';
-import { constantTimeStringEqual, hashSecret, readCookie, SESSION_COOKIE } from './crypto.js';
+import {
+  clearSessionCookie,
+  constantTimeStringEqual,
+  hashSecret,
+  readAuthSessionCookie,
+} from './crypto.js';
 import type { AuthenticatedRequest } from './types.js';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
@@ -16,7 +21,7 @@ export const requireSameOrigin: RequestHandler = (request, _response, next) => {
 
 export const requireAuthenticatedSession: RequestHandler = async (request, response, next) => {
   try {
-    const rawToken = readCookie(request.headers.cookie, SESSION_COOKIE);
+    const rawToken = readAuthSessionCookie(request.headers.cookie);
     if (!rawToken) throw new HttpError(401, 'Sessão necessária.');
 
     const session = await prisma.authSession.findUnique({
@@ -34,12 +39,7 @@ export const requireAuthenticatedSession: RequestHandler = async (request, respo
 
     if (!session || session.expiresAt <= new Date()) {
       if (session) await prisma.authSession.delete({ where: { id: session.id } });
-      response.clearCookie(SESSION_COOKIE, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/api/v1/auth',
-      });
+      clearSessionCookie(response);
       throw new HttpError(401, 'Sessão expirada.');
     }
 

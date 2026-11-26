@@ -7,7 +7,9 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "db:check": "tsx src/db/check-connection.ts",
-    "admin:provision": "tsx src/scripts/provision-admin.ts"
+    "admin:provision": "tsx src/scripts/provision-admin.ts",
+    "catalogs:sync": "tsx src/scripts/sync-catalogs.ts",
+    "db:seed:ticket-categories": "tsx src/scripts/seed-ticket-categories.ts"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.10.1",

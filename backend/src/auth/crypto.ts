@@ -9,7 +9,8 @@ import type { Response } from 'express';
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 
-export const SESSION_COOKIE = 'sc_auth_session';
+export const SESSION_COOKIE = 'sc_api_session';
+export const LEGACY_SESSION_COOKIE = 'sc_auth_session';
 export const OAUTH_STATE_COOKIE = 'sc_oauth_state';
 export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -58,7 +59,7 @@ export function sessionCookieOptions() {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
     sameSite: 'lax' as const,
-    path: '/api/v1/auth',
+    path: '/api/v1',
     maxAge: SESSION_TTL_MS,
   };
 }
@@ -68,8 +69,20 @@ export function clearSessionCookie(response: Response): void {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
     sameSite: 'lax',
+    path: '/api/v1',
+  });
+  response.clearCookie(LEGACY_SESSION_COOKIE, {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: 'lax',
     path: '/api/v1/auth',
   });
+}
+
+export function readAuthSessionCookie(cookieHeader: string | undefined): string | undefined {
+  return (
+    readCookie(cookieHeader, SESSION_COOKIE) ?? readCookie(cookieHeader, LEGACY_SESSION_COOKIE)
+  );
 }
 
 export function setOAuthStateCookie(response: Response, state: string): void {

@@ -247,6 +247,7 @@ model Ticket {
   description            String             @db.Text
   status                 TicketStatus       @default(ABERTO)
   priority               TicketPriority     @default(MEDIA)
+  suggestedPriority      TicketPriority
   requesterUserId        String?            @db.VarChar(30)
   requesterNameSnapshot  String             @db.VarChar(160)
   requesterEmailSnapshot String             @db.VarChar(254)
@@ -255,6 +256,7 @@ model Ticket {
   unitId                 String?            @db.VarChar(30)
   unitNameSnapshot       String             @db.VarChar(100)
   categoryId             String?            @db.VarChar(30)
+  categoryNameSnapshot   String             @db.VarChar(100)
   resolution             String?            @db.Text
   resolvedAt             DateTime?
   autoCloseAt            DateTime?
@@ -275,6 +277,15 @@ model Ticket {
   @@index([unitId, departmentId, createdAt])
   @@index([autoCloseAt, status])
   @@map("tickets")
+}
+
+model TicketProtocolCounter {
+  year       Int      @id
+  lastNumber Int      @default(0) @db.UnsignedInt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("ticket_protocol_counters")
 }
 
 model TicketComment {

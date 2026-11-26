@@ -57,18 +57,20 @@ no cadastro público.
 
 ## Comandos úteis
 
-| Comando                | Finalidade                                    |
-| ---------------------- | --------------------------------------------- |
-| `npm run dev`          | Inicia frontend e API juntos.                 |
-| `npm run build`        | Compila os dois workspaces.                   |
-| `npm test`             | Executa os testes unitários básicos.          |
-| `npm run lint`         | Verifica o código com ESLint.                 |
-| `npm run format:check` | Verifica formatação com Prettier.             |
-| `npm run db:generate`  | Gera o Prisma Client.                         |
-| `npm run db:migrate`   | Cria/aplica migrations em desenvolvimento.    |
-| `npm run db:deploy`    | Aplica migrations já versionadas.             |
-| `npm run db:status`    | Exibe o estado das migrations.                |
-| `npm run db:check`     | Confirma conexão e consulta simples ao MySQL. |
+| Comando                                                                                        | Finalidade                                               |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `npm run dev`                                                                                  | Inicia frontend e API juntos.                            |
+| `npm run build`                                                                                | Compila os dois workspaces.                              |
+| `npm test`                                                                                     | Executa os testes unitários básicos.                     |
+| `npm run lint`                                                                                 | Verifica o código com ESLint.                            |
+| `npm run format:check`                                                                         | Verifica formatação com Prettier.                        |
+| `npm run db:generate`                                                                          | Gera o Prisma Client.                                    |
+| `npm run db:migrate`                                                                           | Cria/aplica migrations em desenvolvimento.               |
+| `npm run db:deploy`                                                                            | Aplica migrations já versionadas.                        |
+| `npm run db:status`                                                                            | Exibe o estado das migrations.                           |
+| `npm run db:check`                                                                             | Confirma conexão e consulta simples ao MySQL.            |
+| `npm run db:seed:ticket-categories --workspace @sao-camilo/backend`                            | Insere idempotentemente as nove categorias iniciais.     |
+| `npm run catalogs:sync --workspace @sao-camilo/backend -- --file "C:\\caminho\\catalogo.json"` | Carrega múltiplas unidades e setores de arquivo externo. |
 
 ## Organização
 
@@ -82,8 +84,9 @@ no cadastro público.
 Autenticação por senha, verificação e recuperação por e-mail, associação autenticada de provedores
 e estrutura OAuth Google/Apple estão implementadas. OAuth e e-mail permanecem indisponíveis até
 que credenciais verdadeiras sejam fornecidas. O endpoint de prontidão executa `SELECT 1` no banco.
-Fluxos de chamados, notificações de chamados, scheduler, anexos e relatórios ainda não estão
-implementados.
+Na Etapa 4, as duas primeiras entregas cobrem carga de catálogos e abertura transacional de
+chamados. Listagem, detalhes, mensagens, anexos e telas do portal ainda não foram implementados.
 
-Consulte [autenticação](docs/authentication.md), [arquitetura](docs/architecture.md), [modelo de dados](docs/database.md) e
-[operação e recuperação](docs/operations.md).
+Consulte [autenticação](docs/authentication.md), [catálogos](docs/catalogs.md),
+[abertura de chamados](docs/ticket-creation.md), [arquitetura](docs/architecture.md),
+[modelo de dados](docs/database.md) e [operação e recuperação](docs/operations.md).

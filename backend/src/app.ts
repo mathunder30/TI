@@ -6,6 +6,7 @@ import { authRouter } from './auth/router.js';
 import { env } from './config/env.js';
 import { errorHandler, notFoundHandler } from './http/errors.js';
 import { healthRouter } from './routes/health.js';
+import { ticketsRouter } from './tickets/router.js';
 
 export const app = express();
 
@@ -26,5 +27,6 @@ app.use(
 );
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/tickets', ticketsRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);

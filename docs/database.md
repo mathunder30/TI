@@ -13,13 +13,15 @@ O schema Prisma fica em `backend/prisma/schema.prisma`. IDs são gerados no back
 - `User` tem um dos dois papéis e pertence a uma unidade e um setor. Chamados guardam uma
   referência opcional ao usuário e cópias imutáveis de nome, e-mail, setor e unidade. Assim,
   alterações de perfil ou desativação não reescrevem o solicitante histórico.
-- `AdminAccount` tem uma chave singleton e uma relação 1—1 com o usuário TI. O script futuro de
-  provisionamento deverá reivindicar esse único slot de forma atômica.
+- `AdminAccount` tem uma chave singleton e uma relação 1—1 com o usuário TI. O comando
+  `admin:provision` reivindica esse único slot de forma atômica.
 - `AuthAccount` permite associar provedores a uma conta. O vínculo por identidade do provedor é
   único; e-mail igual sozinho não deve associar contas.
-- `TicketCategory` 1—N `Ticket`. Cada chamado mantém número único, prioridade/status e cópias
-  históricas do solicitante. Categoria, unidade e setor relacionados usam referências opcionais
-  para permitir arquivamento sem perder os snapshots.
+- `TicketCategory` 1—N `Ticket`. Cada chamado mantém protocolo único, prioridade operacional,
+  prioridade sugerida e snapshots do solicitante, categoria, unidade e setor. Categoria, unidade e
+  setor relacionados usam referências opcionais para permitir arquivamento sem perder snapshots.
+- `TicketProtocolCounter` mantém o último protocolo por ano civil de Brasília. O incremento ocorre
+  dentro da transação de abertura e a unicidade final também é protegida pelo índice de `Ticket.number`.
 - `TicketComment`, `TicketHistory` e `TicketAttachment` pertencem a um chamado. Comentários
   públicos e internos têm visibilidade explícita; histórico registra eventos e estados; anexos
   guardam metadados e chave privada de armazenamento, não conteúdo público.
@@ -40,3 +42,8 @@ impede dois administradores provisionados; a autorização ainda será validada 
 `prisma/migrations/` é a fonte versionada da estrutura aplicada. Gere mudanças em desenvolvimento
 com `npm run db:migrate` e aplique mudanças revisadas em implantação com `npm run db:deploy`.
 Não use `db push` como substituto de migrations versionadas.
+
+As tabelas `Unit`, `Department` e `TicketCategory` já permitem múltiplos registros. A rotina
+`catalogs:sync` carrega unidades/setores de JSON externo e o seed `db:seed:ticket-categories`
+insere as nove categorias iniciais. Consulte [carga de catálogos](catalogs.md) para o contrato e
+os comandos. Nenhuma migration foi necessária para esta entrega.
