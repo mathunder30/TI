@@ -29,6 +29,14 @@ const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    ATTACHMENT_STORAGE_DIR: z.string().default(resolve(process.cwd(), '../private-attachments')),
+    ATTACHMENT_MAX_SIZE_BYTES: z.coerce
+      .number()
+      .int()
+      .min(1024)
+      .max(25 * 1024 * 1024)
+      .default(10 * 1024 * 1024),
+    ATTACHMENT_MAX_PER_TICKET: z.coerce.number().int().min(1).max(20).default(5),
   })
   .superRefine((values, context) => {
     const groups = [

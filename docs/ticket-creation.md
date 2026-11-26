@@ -45,5 +45,6 @@ Ele se recusa a executar se `NODE_ENV=production` ou se o host do banco não for
 
 ## Fora desta entrega
 
-Listagem, detalhe, mensagens, anexos, transições de status após a abertura e painel TI permanecem
-para entregas posteriores.
+Listagem e detalhe foram completados nas entregas seguintes. Mensagens, transições e anexos estão
+descritos em [ticket-workflow.md](ticket-workflow.md). Fechamento automático e dashboard completo
+de TI permanecem fora do escopo atual.

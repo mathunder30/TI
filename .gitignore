@@ -9,6 +9,7 @@ coverage/
 Thumbs.db
 backend/storage/
 backend/uploads/
+private-attachments/
 backend/src/generated/prisma/
 playwright-report/
 test-results/

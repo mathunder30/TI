@@ -34,3 +34,14 @@ export const listTicketsQuerySchema = z
   .strict();
 
 export type ListTicketsQuery = z.output<typeof listTicketsQuerySchema>;
+
+export const ticketMessageSchema = z.object({ body: z.string().trim().min(1).max(5_000) }).strict();
+export const ticketReasonSchema = z
+  .object({ reason: z.string().trim().min(10).max(2_000) })
+  .strict();
+export const ticketStatusChangeSchema = z
+  .object({ status: z.enum(['EM_TRIAGEM', 'EM_ATENDIMENTO']) })
+  .strict();
+export const ticketResolutionSchema = z
+  .object({ resolution: z.string().trim().min(10).max(5_000) })
+  .strict();

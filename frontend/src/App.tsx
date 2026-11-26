@@ -17,7 +17,7 @@ import {
   RegisterPage,
   SimpleAuthPage,
 } from './auth/AuthPages';
-import { TicketDetailPage, TicketListPage } from './tickets/TicketPages';
+import { TicketDetailPage, TicketListPage, TiQueuePage } from './tickets/TicketPages';
 
 type ApiStatus = 'checking' | 'online' | 'offline';
 type ReadinessResponse = { dependencies?: { mysql?: string } };
@@ -162,7 +162,10 @@ function FoundationPage() {
                 )}
                 {user && (
                   <p className="signed-in">
-                    Sessão ativa para {user.email}. <Link to="/portal/chamados">Meus chamados</Link>{' '}
+                    Sessão ativa para {user.email}.{' '}
+                    <Link to={user.role === 'TI' ? '/ti/chamados' : '/portal/chamados'}>
+                      {user.role === 'TI' ? 'Fila de atendimento' : 'Meus chamados'}
+                    </Link>{' '}
                     · <Link to="/auth/connections">Gerenciar métodos de acesso</Link>
                   </p>
                 )}
@@ -266,6 +269,15 @@ function EmployeeRoute({ children }: { children: React.ReactNode }) {
   return children;
 }
 
+function TiRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <main className="not-found">Verificando sessão…</main>;
+  if (!user) return <Navigate to="/auth/login" replace state={{ from: location.pathname }} />;
+  if (user.role !== 'TI') return <Navigate to="/" replace />;
+  return children;
+}
+
 export function App() {
   return (
     <Routes>
@@ -284,6 +296,22 @@ export function App() {
           <EmployeeRoute>
             <TicketDetailPage />
           </EmployeeRoute>
+        }
+      />
+      <Route
+        path="/ti/chamados"
+        element={
+          <TiRoute>
+            <TiQueuePage />
+          </TiRoute>
+        }
+      />
+      <Route
+        path="/ti/chamados/:ticketId"
+        element={
+          <TiRoute>
+            <TicketDetailPage />
+          </TiRoute>
         }
       />
       <Route path="/auth/login" element={<LoginPage />} />

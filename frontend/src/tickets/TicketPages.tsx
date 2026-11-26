@@ -5,11 +5,16 @@ import {
   ArrowRight,
   CircleHelp,
   Layers3,
+  Send,
+  Paperclip,
+  Download,
+  Check,
+  RotateCcw,
   Search,
   TicketCheck,
 } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router';
-import { apiErrorMessage, apiFetch } from '../lib/api';
+import { apiErrorMessage, apiFetch, apiUrl } from '../lib/api';
 import { useAuth } from '../auth/useAuth';
 
 type TicketStatus =
@@ -50,6 +55,7 @@ type TicketDetail = TicketListItem & {
   requester: { name: string; email: string };
   unit: string;
   department: string;
+  resolution: string | null;
 };
 type TimelineEvent = {
   id: string;
@@ -64,6 +70,21 @@ type LoadState<T> =
   | { key: string; status: 'loading' }
   | { key: string; status: 'error'; message: string }
   | { key: string; status: 'success'; data: T };
+type TicketMessage = {
+  id: string;
+  authorNameSnapshot: string;
+  author: string;
+  body: string;
+  createdAt: string;
+};
+type TicketAttachment = {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  byteSize: number;
+  createdAt: string;
+  uploader: string;
+};
 
 const STATUS_LABELS: Record<TicketStatus, string> = {
   ABERTO: 'Aberto',
@@ -109,6 +130,7 @@ function PriorityLabel({ priority }: { priority: TicketPriority }) {
 
 function TicketShell({ title, children }: { title: string; children: ReactNode }) {
   const { user } = useAuth();
+  const isTi = user?.role === 'TI';
   return (
     <div className="app-frame">
       <aside className="sidebar" aria-label="Navegação do funcionário">
@@ -119,10 +141,14 @@ function TicketShell({ title, children }: { title: string; children: ReactNode }
             <small>Portal de TI</small>
           </span>
         </Link>
-        <div className="sidebar-label">PORTAL DO FUNCIONÁRIO</div>
-        <Link className="nav-current" to="/portal/chamados" aria-current="page">
+        <div className="sidebar-label">{isTi ? 'PORTAL DE TI' : 'PORTAL DO FUNCIONÁRIO'}</div>
+        <Link
+          className="nav-current"
+          to={isTi ? '/ti/chamados' : '/portal/chamados'}
+          aria-current="page"
+        >
           <TicketCheck size={18} strokeWidth={1.8} />
-          <span>Meus chamados</span>
+          <span>{isTi ? 'Fila de atendimento' : 'Meus chamados'}</span>
         </Link>
         <div className="sidebar-footer">
           <div className="support-icon">
@@ -423,12 +449,154 @@ export function TicketListPage() {
   );
 }
 
+type TiQueueItem = TicketListItem & { requester: string; unit: string };
+type TiQueueData = { items: TiQueueItem[]; pagination: TicketPageData['pagination'] };
+
+export function TiQueuePage() {
+  const [result, setResult] = useState<LoadState<TiQueueData>>({ key: 'queue', status: 'loading' });
+  const [retry, setRetry] = useState(0);
+  const [page, setPage] = useState(1);
+  useEffect(() => {
+    const controller = new AbortController();
+    apiFetch(`/api/v1/tickets/ti?page=${page}&pageSize=20`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await apiErrorMessage(response));
+        return response.json() as Promise<TiQueueData>;
+      })
+      .then((data) => setResult({ key: 'queue', status: 'success', data }))
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted)
+          setResult({
+            key: 'queue',
+            status: 'error',
+            message: error instanceof Error ? error.message : 'Falha na consulta.',
+          });
+      });
+    return () => controller.abort();
+  }, [page, retry]);
+
+  return (
+    <TicketShell title="Fila de atendimento">
+      <div className="ticket-page-heading">
+        <div>
+          <p className="eyebrow">
+            <Layers3 size={15} /> ÁREA DE TI
+          </p>
+          <h1>Fila de atendimento</h1>
+          <p className="page-intro">Chamados recebidos para triagem e atendimento.</p>
+        </div>
+        {result.status === 'success' && (
+          <div className="ticket-count">{result.data.pagination.totalItems} chamados</div>
+        )}
+      </div>
+      {result.status === 'loading' && (
+        <div className="ticket-state" role="status">
+          <Activity size={18} className="ticket-spinner" /> Carregando chamados…
+        </div>
+      )}
+      {result.status === 'error' && (
+        <TicketLoadError message={result.message} onRetry={() => setRetry((count) => count + 1)} />
+      )}
+      {result.status === 'success' && result.data.items.length === 0 && (
+        <div className="ticket-state ticket-state--empty">
+          <TicketCheck size={25} />
+          <strong>Nenhum chamado recebido</strong>
+        </div>
+      )}
+      {result.status === 'success' && result.data.items.length > 0 && (
+        <>
+          <div className="ticket-table-wrap">
+            <table className="ticket-table">
+              <thead>
+                <tr>
+                  <th>Protocolo</th>
+                  <th>Solicitação</th>
+                  <th>Solicitante</th>
+                  <th>Unidade</th>
+                  <th>Prioridade</th>
+                  <th>Status</th>
+                  <th>Atualização</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {result.data.items.map((ticket) => (
+                  <tr key={ticket.id}>
+                    <td>
+                      <Link className="ticket-number" to={`/ti/chamados/${ticket.id}`}>
+                        {ticket.number}
+                      </Link>
+                    </td>
+                    <td className="ticket-title-cell">{ticket.title}</td>
+                    <td>{ticket.requester}</td>
+                    <td>{ticket.unit}</td>
+                    <td>
+                      <PriorityLabel priority={ticket.priority} />
+                    </td>
+                    <td>
+                      <StatusBadge status={ticket.status} />
+                    </td>
+                    <td>{formatDate(ticket.updatedAt)}</td>
+                    <td>
+                      <Link
+                        className="ticket-open-link"
+                        aria-label={`Abrir chamado ${ticket.number}`}
+                        to={`/ti/chamados/${ticket.id}`}
+                      >
+                        <ArrowRight size={17} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="ticket-pagination">
+            <span>
+              {result.data.pagination.totalItems} chamados · Página {page} de{' '}
+              {Math.max(result.data.pagination.totalPages, 1)}
+            </span>
+            <div>
+              <button
+                className="button button-secondary"
+                disabled={!result.data.pagination.hasPreviousPage}
+                onClick={() => setPage((current) => current - 1)}
+              >
+                <ArrowLeft size={15} /> Anterior
+              </button>
+              <button
+                className="button button-secondary"
+                disabled={!result.data.pagination.hasNextPage}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                Próxima <ArrowRight size={15} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </TicketShell>
+  );
+}
+
 export function TicketDetailPage() {
   const { ticketId = '' } = useParams();
+  const { user, csrfToken } = useAuth();
   const [retryCount, setRetryCount] = useState(0);
   const [result, setResult] = useState<
-    LoadState<{ ticket: TicketDetail; timeline: TimelineEvent[] }>
+    LoadState<{
+      ticket: TicketDetail;
+      timeline: TimelineEvent[];
+      messages: TicketMessage[];
+      attachments: TicketAttachment[];
+    }>
   >({ key: ticketId, status: 'loading' });
+  const [message, setMessage] = useState('');
+  const [reason, setReason] = useState('');
+  const [informationRequest, setInformationRequest] = useState('');
+  const [resolution, setResolution] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [busy, setBusy] = useState(false);
   const loading = result.key !== ticketId || result.status === 'loading';
   const error = result.key === ticketId && result.status === 'error' ? result.message : null;
   const data = result.key === ticketId && result.status === 'success' ? result.data : null;
@@ -445,12 +613,25 @@ export function TicketDetailPage() {
         if (!response.ok) throw new Error(await apiErrorMessage(response));
         return response.json() as Promise<{ timeline: TimelineEvent[] }>;
       }),
+      apiFetch(`${base}/messages`, { signal: controller.signal }).then(async (response) => {
+        if (!response.ok) throw new Error(await apiErrorMessage(response));
+        return response.json() as Promise<{ messages: TicketMessage[] }>;
+      }),
+      apiFetch(`${base}/attachments`, { signal: controller.signal }).then(async (response) => {
+        if (!response.ok) throw new Error(await apiErrorMessage(response));
+        return response.json() as Promise<{ attachments: TicketAttachment[] }>;
+      }),
     ])
-      .then(([ticketResult, timelineResult]) =>
+      .then(([ticketResult, timelineResult, messageResult, attachmentResult]) =>
         setResult({
           key: ticketId,
           status: 'success',
-          data: { ticket: ticketResult.ticket, timeline: timelineResult.timeline },
+          data: {
+            ticket: ticketResult.ticket,
+            timeline: timelineResult.timeline,
+            messages: messageResult.messages,
+            attachments: attachmentResult.attachments,
+          },
         }),
       )
       .catch((error: unknown) => {
@@ -465,11 +646,71 @@ export function TicketDetailPage() {
     return () => controller.abort();
   }, [ticketId, retryCount]);
 
+  async function postAction(path: string, body: unknown, method = 'POST') {
+    setBusy(true);
+    setActionError('');
+    try {
+      const response = await apiFetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/${path}`, {
+        method,
+        headers: csrfToken ? { 'x-csrf-token': csrfToken } : undefined,
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(await apiErrorMessage(response));
+      setRetryCount((count) => count + 1);
+      return true;
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : 'Não foi possível concluir a operação.',
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (await postAction('messages', { body: message })) setMessage('');
+  }
+
+  async function uploadAttachment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const file = new FormData(form).get('file');
+    if (!file || typeof file === 'string' || file.size === 0) {
+      setActionError('Selecione um arquivo JPG, JPEG, PNG ou PDF.');
+      return;
+    }
+    setBusy(true);
+    setActionError('');
+    try {
+      const response = await apiFetch(
+        `/api/v1/tickets/${encodeURIComponent(ticketId)}/attachments`,
+        {
+          method: 'POST',
+          headers: csrfToken ? { 'x-csrf-token': csrfToken } : undefined,
+          body: new FormData(form),
+        },
+      );
+      if (!response.ok) throw new Error(await apiErrorMessage(response));
+      form.reset();
+      setRetryCount((count) => count + 1);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Não foi possível enviar o anexo.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const isTi = user?.role === 'TI';
+  const backPath = isTi ? '/ti/chamados' : '/portal/chamados';
+
   return (
     <TicketShell title="Detalhes do chamado">
       <div className="ticket-detail-back">
-        <Link to="/portal/chamados">
-          <ArrowLeft size={16} /> Voltar para meus chamados
+        <Link to={backPath}>
+          <ArrowLeft size={16} />{' '}
+          {isTi ? 'Voltar para fila de atendimento' : 'Voltar para meus chamados'}
         </Link>
       </div>
       {loading && (
@@ -577,6 +818,227 @@ export function TicketDetailPage() {
               </ol>
             )}
           </section>
+          {data.ticket.resolution && (
+            <section className="ticket-detail-card ticket-resolution-card">
+              <h2>Solução registrada por TI</h2>
+              <p>{data.ticket.resolution}</p>
+            </section>
+          )}
+          <section className="ticket-detail-card ticket-conversation-card">
+            <div className="section-heading">
+              <div>
+                <h2>Conversa do chamado</h2>
+                <p>Mensagens públicas entre o funcionário solicitante e TI.</p>
+              </div>
+            </div>
+            <div className="ticket-messages" aria-live="polite">
+              {data.messages.length === 0 ? (
+                <p className="timeline-empty">Ainda não há mensagens nesta conversa.</p>
+              ) : (
+                data.messages.map((item) => (
+                  <article
+                    className={`ticket-message ${item.author === 'Você' ? 'ticket-message--self' : ''}`}
+                    key={item.id}
+                  >
+                    <div>
+                      <strong>{item.authorNameSnapshot}</strong>
+                      <small>
+                        {item.author} · {formatDate(item.createdAt)}
+                      </small>
+                    </div>
+                    <p>{item.body}</p>
+                  </article>
+                ))
+              )}
+            </div>
+            {data.ticket.status !== 'FECHADO' && data.ticket.status !== 'CANCELADO' && (
+              <form className="ticket-message-form" onSubmit={sendMessage}>
+                <label htmlFor="ticket-message">Nova mensagem pública</label>
+                <textarea
+                  id="ticket-message"
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  minLength={1}
+                  maxLength={5000}
+                  required
+                  placeholder="Escreva uma mensagem para o chamado…"
+                />
+                <button className="button button-primary" disabled={busy || !message.trim()}>
+                  <Send size={15} /> Enviar mensagem
+                </button>
+              </form>
+            )}
+          </section>
+          <section className="ticket-detail-card ticket-attachments-card">
+            <div className="section-heading">
+              <div>
+                <h2>Anexos</h2>
+                <p>Arquivos disponíveis somente para participantes autorizados.</p>
+              </div>
+            </div>
+            {data.attachments.length > 0 && (
+              <ul className="ticket-attachment-list">
+                {data.attachments.map((item) => (
+                  <li key={item.id}>
+                    <span>
+                      <Paperclip size={15} />
+                      <strong>{item.originalName}</strong>
+                      <small>
+                        {item.uploader} · {(item.byteSize / 1024).toFixed(0)} KB ·{' '}
+                        {formatDate(item.createdAt)}
+                      </small>
+                    </span>
+                    <a
+                      href={apiUrl(
+                        `/api/v1/tickets/${encodeURIComponent(ticketId)}/attachments/${encodeURIComponent(item.id)}`,
+                      )}
+                    >
+                      <Download size={15} /> Baixar
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {data.attachments.length === 0 && (
+              <p className="timeline-empty">Nenhum anexo neste chamado.</p>
+            )}
+            {data.ticket.status !== 'FECHADO' && data.ticket.status !== 'CANCELADO' && (
+              <form className="ticket-upload-form" onSubmit={uploadAttachment}>
+                <label htmlFor="ticket-file">Adicionar JPG, JPEG, PNG ou PDF</label>
+                <input
+                  id="ticket-file"
+                  type="file"
+                  name="file"
+                  accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                  required
+                />
+                <button className="button button-secondary" disabled={busy}>
+                  <Paperclip size={15} /> Enviar anexo
+                </button>
+              </form>
+            )}
+          </section>
+          {isTi && (
+            <section className="ticket-detail-card ticket-ti-actions">
+              <h2>Ações de atendimento</h2>
+              {['ABERTO', 'REABERTO'].includes(data.ticket.status) && (
+                <button
+                  className="button button-secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void postAction('status', { status: 'EM_TRIAGEM' }, 'PATCH').then(() =>
+                      setActionError(''),
+                    )
+                  }
+                >
+                  Iniciar triagem
+                </button>
+              )}
+              {['ABERTO', 'EM_TRIAGEM', 'REABERTO', 'AGUARDANDO_FUNCIONARIO'].includes(
+                data.ticket.status,
+              ) && (
+                <button
+                  className="button button-secondary"
+                  disabled={busy}
+                  onClick={() => void postAction('status', { status: 'EM_ATENDIMENTO' }, 'PATCH')}
+                >
+                  Iniciar atendimento
+                </button>
+              )}
+              {!['FECHADO', 'CANCELADO', 'RESOLVIDO'].includes(data.ticket.status) && (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void postAction('request-information', { body: informationRequest }).then(
+                      (ok) => {
+                        if (ok) setInformationRequest('');
+                      },
+                    );
+                  }}
+                >
+                  <label>Solicitar informações adicionais</label>
+                  <textarea
+                    value={informationRequest}
+                    onChange={(event) => setInformationRequest(event.target.value)}
+                    minLength={1}
+                    maxLength={5000}
+                    required
+                  />
+                  <button
+                    className="button button-secondary"
+                    disabled={busy || !informationRequest.trim()}
+                  >
+                    Solicitar informações
+                  </button>
+                </form>
+              )}
+              {['EM_ATENDIMENTO', 'REABERTO'].includes(data.ticket.status) && (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void postAction('resolve', { resolution }).then((ok) => {
+                      if (ok) setResolution('');
+                    });
+                  }}
+                >
+                  <label>Registrar solução</label>
+                  <textarea
+                    value={resolution}
+                    onChange={(event) => setResolution(event.target.value)}
+                    minLength={10}
+                    maxLength={5000}
+                    required
+                  />
+                  <button
+                    className="button button-primary"
+                    disabled={busy || resolution.trim().length < 10}
+                  >
+                    <Check size={15} /> Marcar como resolvido
+                  </button>
+                </form>
+              )}
+            </section>
+          )}
+          {!isTi && data.ticket.status === 'RESOLVIDO' && (
+            <section className="ticket-detail-card ticket-employee-actions">
+              <h2>A solução resolveu o problema?</h2>
+              <button
+                className="button button-primary"
+                disabled={busy}
+                onClick={() => void postAction('confirm-resolution', {})}
+              >
+                <Check size={15} /> Confirmar resolução e encerrar
+              </button>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void postAction('reopen', { reason }).then((ok) => {
+                    if (ok) setReason('');
+                  });
+                }}
+              >
+                <label>Solicitar reabertura e explicar o motivo</label>
+                <textarea
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  minLength={10}
+                  maxLength={2000}
+                  required
+                />
+                <button
+                  className="button button-secondary"
+                  disabled={busy || reason.trim().length < 10}
+                >
+                  <RotateCcw size={15} /> Solicitar reabertura
+                </button>
+              </form>
+            </section>
+          )}
+          {actionError && (
+            <p className="form-error" role="alert">
+              {actionError}
+            </p>
+          )}
         </>
       )}
     </TicketShell>

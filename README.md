@@ -84,9 +84,12 @@ no cadastro público.
 Autenticação por senha, verificação e recuperação por e-mail, associação autenticada de provedores
 e estrutura OAuth Google/Apple estão implementadas. OAuth e e-mail permanecem indisponíveis até
 que credenciais verdadeiras sejam fornecidas. O endpoint de prontidão executa `SELECT 1` no banco.
-Na Etapa 4, as duas primeiras entregas cobrem carga de catálogos e abertura transacional de
-chamados. Listagem, detalhes, mensagens, anexos e telas do portal ainda não foram implementados.
+Na Etapa 4, o portal do funcionário já permite acompanhar chamados, consultar histórico e conversar
+com TI. A fila mínima de atendimento permite ao único administrador responder, solicitar
+informações, registrar soluções e gerenciar anexos privados. O fluxo de confirmação e reabertura
+também está integrado ao banco.
 
 Consulte [autenticação](docs/authentication.md), [catálogos](docs/catalogs.md),
 [abertura de chamados](docs/ticket-creation.md), [arquitetura](docs/architecture.md),
-[modelo de dados](docs/database.md) e [operação e recuperação](docs/operations.md).
+[mensagens, status e anexos](docs/ticket-workflow.md), [modelo de dados](docs/database.md) e
+[operação e recuperação](docs/operations.md).
