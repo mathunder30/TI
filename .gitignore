@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+backend/storage/
+backend/uploads/
+backend/src/generated/prisma/
+playwright-report/
+test-results/
