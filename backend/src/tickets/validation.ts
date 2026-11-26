@@ -10,3 +10,27 @@ export const createTicketSchema = z
   .strict();
 
 export type CreateTicketInput = z.output<typeof createTicketSchema>;
+
+export const listTicketsQuerySchema = z
+  .object({
+    status: z
+      .enum([
+        'ABERTO',
+        'EM_TRIAGEM',
+        'EM_ATENDIMENTO',
+        'AGUARDANDO_FUNCIONARIO',
+        'RESOLVIDO',
+        'FECHADO',
+        'REABERTO',
+        'CANCELADO',
+      ])
+      .optional(),
+    priority: z.enum(['BAIXA', 'MEDIA', 'ALTA', 'CRITICA']).optional(),
+    categoryId: z.string().trim().min(1).max(30).optional(),
+    q: z.string().trim().min(1).max(100).optional(),
+    page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .strict();
+
+export type ListTicketsQuery = z.output<typeof listTicketsQuerySchema>;

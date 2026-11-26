@@ -7,7 +7,7 @@ import {
   Layers3,
   ShieldCheck,
 } from 'lucide-react';
-import { Link, Route, Routes } from 'react-router';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router';
 import { apiUrl } from './lib/api';
 import { useAuth } from './auth/useAuth';
 import {
@@ -17,6 +17,7 @@ import {
   RegisterPage,
   SimpleAuthPage,
 } from './auth/AuthPages';
+import { TicketDetailPage, TicketListPage } from './tickets/TicketPages';
 
 type ApiStatus = 'checking' | 'online' | 'offline';
 type ReadinessResponse = { dependencies?: { mysql?: string } };
@@ -161,8 +162,8 @@ function FoundationPage() {
                 )}
                 {user && (
                   <p className="signed-in">
-                    Sessão ativa para {user.email}.{' '}
-                    <Link to="/auth/connections">Gerenciar métodos de acesso</Link>
+                    Sessão ativa para {user.email}. <Link to="/portal/chamados">Meus chamados</Link>{' '}
+                    · <Link to="/auth/connections">Gerenciar métodos de acesso</Link>
                   </p>
                 )}
                 {logoutError && (
@@ -256,10 +257,35 @@ function NotFoundPage() {
   );
 }
 
+function EmployeeRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+  if (loading) return <main className="not-found">Verificando sessão…</main>;
+  if (!user) return <Navigate to="/auth/login" replace state={{ from: location.pathname }} />;
+  if (user.role !== 'FUNCIONARIO') return <Navigate to="/" replace />;
+  return children;
+}
+
 export function App() {
   return (
     <Routes>
       <Route path="/" element={<FoundationPage />} />
+      <Route
+        path="/portal/chamados"
+        element={
+          <EmployeeRoute>
+            <TicketListPage />
+          </EmployeeRoute>
+        }
+      />
+      <Route
+        path="/portal/chamados/:ticketId"
+        element={
+          <EmployeeRoute>
+            <TicketDetailPage />
+          </EmployeeRoute>
+        }
+      />
       <Route path="/auth/login" element={<LoginPage />} />
       <Route path="/auth/register" element={<RegisterPage />} />
       <Route path="/auth/forgot-password" element={<SimpleAuthPage mode="forgot" />} />

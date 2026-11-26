@@ -49,6 +49,7 @@ let inactiveDepartmentId = '';
 let categoryId = '';
 let inactiveCategoryId = '';
 let requesterId = '';
+let otherRequesterId = '';
 let unverifiedId = '';
 let invalidProfileId = '';
 let inactiveUnitUserId = '';
@@ -97,6 +98,10 @@ function openTicket(userId: string, body: Record<string, unknown>) {
     .set('Cookie', session.cookie)
     .set('x-csrf-token', session.csrf)
     .send(body);
+}
+
+function getTickets(userId: string, path: string) {
+  return request(testApp).get(`/api/v1/tickets${path}`).set('Cookie', sessions.get(userId)!.cookie);
 }
 
 async function cleanTestTickets() {
@@ -150,6 +155,11 @@ integration('abertura de chamados no MySQL', () => {
       unitId: unitA.id,
       departmentId: departmentA.id,
     });
+    const otherRequester = await createUser({
+      suffix: `O${suffix}`,
+      unitId: unitA.id,
+      departmentId: departmentA.id,
+    });
     const unverified = await createUser({
       suffix: `V${suffix}`,
       unitId: unitA.id,
@@ -183,6 +193,7 @@ integration('abertura de chamados no MySQL', () => {
       role: UserRole.TI,
     });
     requesterId = requester.id;
+    otherRequesterId = otherRequester.id;
     unverifiedId = unverified.id;
     invalidProfileId = invalidProfile.id;
     inactiveUnitUserId = inactiveUnitUser.id;
@@ -215,6 +226,117 @@ integration('abertura de chamados no MySQL', () => {
     } finally {
       await prisma.$disconnect();
     }
+  });
+
+  it('lista somente os chamados do funcionário autenticado e retorna DTO público', async () => {
+    const own = await openTicket(requesterId, {
+      title: 'Impressora do setor',
+      description: 'A impressora não aparece na lista de dispositivos.',
+      categoryId,
+      priority: 'ALTA',
+    });
+    await openTicket(otherRequesterId, {
+      title: 'Chamado de outra pessoa',
+      description: 'Este conteúdo pertence a outro funcionário.',
+      categoryId,
+      priority: 'BAIXA',
+    });
+    const response = await getTickets(requesterId, '');
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toHaveLength(1);
+    expect(response.body.items[0]).toMatchObject({
+      id: own.body.ticket.id,
+      number: 'SC-2098-00001',
+      title: 'Impressora do setor',
+      category: `Teste categoria ${suffix}`,
+      priority: 'ALTA',
+      status: 'ABERTO',
+    });
+    expect(response.body.items[0]).not.toHaveProperty('requesterUserId');
+    expect(response.body.items[0]).not.toHaveProperty('description');
+    expect(response.body.items[0]).not.toHaveProperty('history');
+  });
+
+  it('filtra por status, prioridade, categoria e pesquisa; paginação limita tamanho', async () => {
+    await openTicket(requesterId, {
+      title: 'Notebook para recepção',
+      description: 'O notebook da recepção está sem conexão de rede.',
+      categoryId,
+      priority: 'ALTA',
+    });
+    await openTicket(requesterId, {
+      title: 'Acesso ao sistema',
+      description: 'Não consigo entrar no sistema financeiro.',
+      categoryId,
+      priority: 'BAIXA',
+    });
+    const filtered = await getTickets(
+      requesterId,
+      `?status=ABERTO&priority=ALTA&categoryId=${categoryId}&q=recepção&page=1&pageSize=1`,
+    );
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.items).toHaveLength(1);
+    expect(filtered.body.items[0].title).toBe('Notebook para recepção');
+    expect(filtered.body.pagination).toMatchObject({
+      page: 1,
+      pageSize: 1,
+      totalItems: 1,
+      totalPages: 1,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    });
+    expect((await getTickets(requesterId, '?pageSize=51')).status).toBe(400);
+    expect((await getTickets(requesterId, '?page=0')).status).toBe(400);
+  });
+
+  it('oculta chamado de outro funcionário com 404 e expõe apenas timeline pública', async () => {
+    const own = await openTicket(requesterId, {
+      title: 'Acesso ao Wi-Fi',
+      description: 'O acesso à rede sem fio não autentica neste equipamento.',
+      categoryId,
+      priority: 'MEDIA',
+    });
+    const foreign = await openTicket(otherRequesterId, {
+      title: 'Chamado privado',
+      description: 'Dados exclusivos de outro funcionário.',
+      categoryId,
+      priority: 'MEDIA',
+    });
+    expect((await getTickets(requesterId, `/${foreign.body.ticket.id}`)).status).toBe(404);
+    expect((await getTickets(requesterId, `/${foreign.body.ticket.id}/timeline`)).status).toBe(404);
+
+    await prisma.ticketHistory.create({
+      data: {
+        ticketId: own.body.ticket.id,
+        actorUserId: tiId,
+        actorNameSnapshot: `Administrador secreto ${suffix}`,
+        eventType: TicketEventType.NOTA_INTERNA,
+        reason: `INTERNAL_SECRET_${suffix}`,
+        metadata: { private: `PRIVATE_METADATA_${suffix}` },
+      },
+    });
+    const detail = await getTickets(requesterId, `/${own.body.ticket.id}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.ticket).toMatchObject({
+      requester: { name: `Teste R${suffix}` },
+      unit: `Teste unidade A ${suffix}`,
+      department: `Teste setor A ${suffix}`,
+      category: `Teste categoria ${suffix}`,
+    });
+    expect(detail.body.ticket).not.toHaveProperty('requesterUserId');
+    expect(detail.body.ticket).not.toHaveProperty('internalResolution');
+    expect(detail.body.ticket).not.toHaveProperty('history');
+
+    const timeline = await getTickets(requesterId, `/${own.body.ticket.id}/timeline`);
+    expect(timeline.status).toBe(200);
+    expect(timeline.body.timeline).toHaveLength(1);
+    expect(timeline.body.timeline[0]).toMatchObject({ label: 'Chamado aberto', to: 'Aberto' });
+    expect(JSON.stringify(timeline.body)).not.toContain(`INTERNAL_SECRET_${suffix}`);
+    expect(JSON.stringify(timeline.body)).not.toContain(`PRIVATE_METADATA_${suffix}`);
+    expect(JSON.stringify(timeline.body)).not.toContain(`Administrador secreto ${suffix}`);
+    expect(timeline.body.timeline[0]).not.toHaveProperty('metadata');
+    expect(timeline.body.timeline[0]).not.toHaveProperty('reason');
   });
 
   it('abre um chamado autenticado e persiste snapshots, prioridade e evento inicial', async () => {
