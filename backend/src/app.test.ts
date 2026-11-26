@@ -32,4 +32,16 @@ describe('API foundation', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status: 'ready', dependencies: { mysql: 'ok' } });
   });
+
+  it('reports only authentication providers that are actually configured', async () => {
+    const response = await request(app).get('/api/v1/auth/providers');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      emailPassword: true,
+      emailDelivery: false,
+      google: false,
+      apple: false,
+    });
+  });
 });

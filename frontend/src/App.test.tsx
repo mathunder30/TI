@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { App } from './App';
+import { AuthProvider } from './auth/AuthContext';
 
 afterEach(() => {
   cleanup();
@@ -21,7 +22,9 @@ describe('fundação do portal', () => {
 
     render(
       <MemoryRouter>
-        <App />
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </MemoryRouter>,
     );
 
@@ -35,7 +38,9 @@ describe('fundação do portal', () => {
 
     render(
       <MemoryRouter>
-        <App />
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </MemoryRouter>,
     );
 

@@ -64,16 +64,27 @@ enum NotificationStatus {
   FALHA
 }
 
+enum AuthTokenType {
+  VERIFICACAO_EMAIL
+  REDEFINICAO_SENHA
+}
+
+enum OAuthIntent {
+  LOGIN
+  CADASTRO
+  VINCULO
+}
+
 model Unit {
-  id         String       @id @default(cuid()) @db.VarChar(30)
-  name       String       @unique @db.VarChar(100)
-  code       String       @unique @db.VarChar(30)
-  isActive   Boolean      @default(true)
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id          String       @id @default(cuid()) @db.VarChar(30)
+  name        String       @unique @db.VarChar(100)
+  code        String       @unique @db.VarChar(30)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   departments Department[]
-  users      User[]
-  tickets    Ticket[]
+  users       User[]
+  tickets     Ticket[]
 
   @@index([isActive, name])
   @@map("units")
@@ -97,27 +108,30 @@ model Department {
 }
 
 model User {
-  id            String       @id @default(cuid()) @db.VarChar(30)
-  fullName      String       @db.VarChar(160)
-  email         String       @unique @db.VarChar(254)
-  emailVerifiedAt DateTime?
-  role          UserRole     @default(FUNCIONARIO)
-  tiSlot        Int?         @unique
-  unitId        String       @db.VarChar(30)
-  departmentId  String       @db.VarChar(30)
-  isActive      Boolean      @default(true)
-  deletedAt     DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  unit          Unit         @relation(fields: [unitId], references: [id], onDelete: Restrict)
-  department    Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  authAccounts  AuthAccount[]
-  adminAccount  AdminAccount?
-  tickets       Ticket[]
-  comments      TicketComment[]
-  historyEvents TicketHistory[]
-  attachments   TicketAttachment[]
-  auditEvents   AuditLog[]
+  id                String             @id @default(cuid()) @db.VarChar(30)
+  fullName          String             @db.VarChar(160)
+  email             String             @unique @db.VarChar(254)
+  emailVerifiedAt   DateTime?
+  role              UserRole           @default(FUNCIONARIO)
+  tiSlot            Int?               @unique
+  unitId            String             @db.VarChar(30)
+  departmentId      String             @db.VarChar(30)
+  isActive          Boolean            @default(true)
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  unit              Unit               @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  department        Department         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  authAccounts      AuthAccount[]
+  adminAccount      AdminAccount?
+  tickets           Ticket[]
+  comments          TicketComment[]
+  historyEvents     TicketHistory[]
+  attachments       TicketAttachment[]
+  auditEvents       AuditLog[]
+  authSessions      AuthSession[]
+  authTokens        AuthToken[]
+  oauthTransactions OAuthTransaction[]
 
   @@index([role, isActive])
   @@index([unitId, departmentId])
@@ -134,19 +148,83 @@ model AdminAccount {
 }
 
 model AuthAccount {
-  id               String       @id @default(cuid()) @db.VarChar(30)
-  userId           String       @db.VarChar(30)
-  provider         AuthProvider
-  providerSubject  String?      @db.VarChar(191)
-  providerEmail    String?      @db.VarChar(254)
-  passwordHash     String?      @db.VarChar(255)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  user             User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  id              String       @id @default(cuid()) @db.VarChar(30)
+  userId          String       @db.VarChar(30)
+  provider        AuthProvider
+  providerSubject String?      @db.VarChar(191)
+  providerEmail   String?      @db.VarChar(254)
+  passwordHash    String?      @db.VarChar(255)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@unique([provider, providerSubject])
   @@index([userId])
   @@map("auth_accounts")
+}
+
+model AuthSession {
+  id                 String   @id @default(cuid()) @db.VarChar(30)
+  userId             String   @db.VarChar(30)
+  tokenHash          String   @unique @db.Char(64)
+  csrfTokenHash      String   @db.Char(64)
+  csrfTokenEncrypted String   @db.VarChar(255)
+  expiresAt          DateTime
+  createdAt          DateTime @default(now())
+  lastUsedAt         DateTime @default(now())
+  user               User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, expiresAt])
+  @@map("auth_sessions")
+}
+
+model AuthToken {
+  id         String        @id @default(cuid()) @db.VarChar(30)
+  userId     String        @db.VarChar(30)
+  type       AuthTokenType
+  tokenHash  String        @unique @db.Char(64)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime      @default(now())
+  user       User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, type, expiresAt])
+  @@map("auth_tokens")
+}
+
+model OAuthTransaction {
+  id                    String       @id @default(cuid()) @db.VarChar(30)
+  provider              AuthProvider
+  intent                OAuthIntent
+  stateHash             String       @unique @db.Char(64)
+  nonce                 String       @db.VarChar(191)
+  codeVerifierEncrypted String       @db.VarChar(512)
+  userId                String?      @db.VarChar(30)
+  sessionId             String?      @db.VarChar(30)
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  createdAt             DateTime     @default(now())
+  user                  User?        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([expiresAt, consumedAt])
+  @@index([userId, sessionId])
+  @@map("oauth_transactions")
+}
+
+model PendingOAuthIdentity {
+  id              String       @id @default(cuid()) @db.VarChar(30)
+  provider        AuthProvider
+  providerSubject String       @db.VarChar(191)
+  email           String       @db.VarChar(254)
+  fullName        String?      @db.VarChar(160)
+  tokenHash       String       @unique @db.Char(64)
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime     @default(now())
+
+  @@unique([provider, providerSubject])
+  @@index([expiresAt, consumedAt])
+  @@map("pending_oauth_identities")
 }
 
 model TicketCategory {
@@ -163,34 +241,34 @@ model TicketCategory {
 }
 
 model Ticket {
-  id                      String         @id @default(cuid()) @db.VarChar(30)
-  number                  String         @unique @db.VarChar(24)
-  title                   String         @db.VarChar(200)
-  description             String         @db.Text
-  status                  TicketStatus   @default(ABERTO)
-  priority                TicketPriority @default(MEDIA)
-  requesterUserId         String?        @db.VarChar(30)
-  requesterNameSnapshot   String         @db.VarChar(160)
-  requesterEmailSnapshot  String         @db.VarChar(254)
-  departmentId            String?        @db.VarChar(30)
-  departmentNameSnapshot  String         @db.VarChar(100)
-  unitId                  String?        @db.VarChar(30)
-  unitNameSnapshot        String         @db.VarChar(100)
-  categoryId              String?        @db.VarChar(30)
-  resolution              String?        @db.Text
-  resolvedAt              DateTime?
-  autoCloseAt             DateTime?
-  closedAt                DateTime?
-  createdAt               DateTime       @default(now())
-  updatedAt               DateTime       @updatedAt
-  requester               User?          @relation(fields: [requesterUserId], references: [id], onDelete: SetNull)
-  department              Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  unit                    Unit?          @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  category                TicketCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  comments                TicketComment[]
-  history                 TicketHistory[]
-  attachments             TicketAttachment[]
-  notifications           Notification[]
+  id                     String             @id @default(cuid()) @db.VarChar(30)
+  number                 String             @unique @db.VarChar(24)
+  title                  String             @db.VarChar(200)
+  description            String             @db.Text
+  status                 TicketStatus       @default(ABERTO)
+  priority               TicketPriority     @default(MEDIA)
+  requesterUserId        String?            @db.VarChar(30)
+  requesterNameSnapshot  String             @db.VarChar(160)
+  requesterEmailSnapshot String             @db.VarChar(254)
+  departmentId           String?            @db.VarChar(30)
+  departmentNameSnapshot String             @db.VarChar(100)
+  unitId                 String?            @db.VarChar(30)
+  unitNameSnapshot       String             @db.VarChar(100)
+  categoryId             String?            @db.VarChar(30)
+  resolution             String?            @db.Text
+  resolvedAt             DateTime?
+  autoCloseAt            DateTime?
+  closedAt               DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  requester              User?              @relation(fields: [requesterUserId], references: [id], onDelete: SetNull)
+  department             Department?        @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  unit                   Unit?              @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  category               TicketCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  comments               TicketComment[]
+  history                TicketHistory[]
+  attachments            TicketAttachment[]
+  notifications          Notification[]
 
   @@index([status, priority, createdAt])
   @@index([requesterUserId, createdAt])
@@ -215,18 +293,18 @@ model TicketComment {
 }
 
 model TicketHistory {
-  id                 String          @id @default(cuid()) @db.VarChar(30)
-  ticketId           String          @db.VarChar(30)
-  actorUserId        String?         @db.VarChar(30)
-  actorNameSnapshot  String          @db.VarChar(160)
-  eventType          TicketEventType
-  previousValue      String?         @db.VarChar(100)
-  newValue           String?         @db.VarChar(100)
-  reason             String?         @db.Text
-  metadata           Json?
-  createdAt          DateTime        @default(now())
-  ticket             Ticket          @relation(fields: [ticketId], references: [id], onDelete: Restrict)
-  actor              User?           @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  id                String          @id @default(cuid()) @db.VarChar(30)
+  ticketId          String          @db.VarChar(30)
+  actorUserId       String?         @db.VarChar(30)
+  actorNameSnapshot String          @db.VarChar(160)
+  eventType         TicketEventType
+  previousValue     String?         @db.VarChar(100)
+  newValue          String?         @db.VarChar(100)
+  reason            String?         @db.Text
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+  ticket            Ticket          @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  actor             User?           @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, createdAt])
   @@index([actorUserId, createdAt])
@@ -234,17 +312,17 @@ model TicketHistory {
 }
 
 model TicketAttachment {
-  id                  String   @id @default(cuid()) @db.VarChar(30)
-  ticketId            String   @db.VarChar(30)
-  uploadedByUserId    String?  @db.VarChar(30)
-  uploaderNameSnapshot String  @db.VarChar(160)
-  storageKey          String   @unique @db.VarChar(255)
-  originalName        String   @db.VarChar(255)
-  mimeType            String   @db.VarChar(100)
-  byteSize            BigInt
-  createdAt           DateTime @default(now())
-  ticket              Ticket   @relation(fields: [ticketId], references: [id], onDelete: Restrict)
-  uploadedBy          User?    @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  id                   String   @id @default(cuid()) @db.VarChar(30)
+  ticketId             String   @db.VarChar(30)
+  uploadedByUserId     String?  @db.VarChar(30)
+  uploaderNameSnapshot String   @db.VarChar(160)
+  storageKey           String   @unique @db.VarChar(255)
+  originalName         String   @db.VarChar(255)
+  mimeType             String   @db.VarChar(100)
+  byteSize             BigInt
+  createdAt            DateTime @default(now())
+  ticket               Ticket   @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  uploadedBy           User?    @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, createdAt])
   @@map("ticket_attachments")

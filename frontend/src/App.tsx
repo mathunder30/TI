@@ -9,11 +9,21 @@ import {
 } from 'lucide-react';
 import { Link, Route, Routes } from 'react-router';
 import { apiUrl } from './lib/api';
+import { useAuth } from './auth/useAuth';
+import {
+  CompleteOAuthPage,
+  ConnectionsPage,
+  LoginPage,
+  RegisterPage,
+  SimpleAuthPage,
+} from './auth/AuthPages';
 
 type ApiStatus = 'checking' | 'online' | 'offline';
 type ReadinessResponse = { dependencies?: { mysql?: string } };
 
 function FoundationPage() {
+  const { user, request, refresh, loading } = useAuth();
+  const [logoutError, setLogoutError] = useState('');
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
   const [databaseStatus, setDatabaseStatus] = useState<ApiStatus>('checking');
 
@@ -81,8 +91,32 @@ function FoundationPage() {
           <div className="breadcrumb">
             Portal <span>/</span> Visão geral
           </div>
-          <div className="environment-pill">
-            <span /> Ambiente de desenvolvimento
+          <div className="topbar-actions">
+            {user ? (
+              <>
+                <Link className="user-chip" to="/auth/connections">
+                  {user.fullName} · {user.role === 'TI' ? 'TI' : 'Funcionário'}
+                </Link>
+                <button
+                  className="text-button"
+                  onClick={async () => {
+                    const response = await request('/logout', { method: 'POST' });
+                    if (response.ok) {
+                      await refresh();
+                    } else setLogoutError('Não foi possível encerrar a sessão.');
+                  }}
+                >
+                  Sair
+                </button>
+              </>
+            ) : (
+              <Link className="button button-primary top-login" to="/auth/login">
+                {loading ? 'Aguarde…' : 'Entrar'}
+              </Link>
+            )}
+            <div className="environment-pill">
+              <span /> Ambiente de desenvolvimento
+            </div>
           </div>
         </header>
 
@@ -112,9 +146,30 @@ function FoundationPage() {
                 <p className="card-kicker">AMBIENTE PREPARADO</p>
                 <h2>Uma base segura para o suporte das três unidades.</h2>
                 <p>
-                  Frontend, API e banco de dados estão organizados para evoluir por etapas. As
-                  funcionalidades de acesso e atendimento serão construídas nas próximas fases.
+                  Faça seu acesso ao portal com e-mail e senha. As opções Google e Apple ficam
+                  disponíveis após a configuração segura das credenciais oficiais.
                 </p>
+                {!user && (
+                  <div className="welcome-actions">
+                    <Link className="button button-primary" to="/auth/login">
+                      Entrar no portal
+                    </Link>
+                    <Link className="button button-secondary" to="/auth/register">
+                      Criar conta de funcionário
+                    </Link>
+                  </div>
+                )}
+                {user && (
+                  <p className="signed-in">
+                    Sessão ativa para {user.email}.{' '}
+                    <Link to="/auth/connections">Gerenciar métodos de acesso</Link>
+                  </p>
+                )}
+                {logoutError && (
+                  <p className="form-error" role="alert">
+                    {logoutError}
+                  </p>
+                )}
               </div>
             </div>
             <div className="welcome-decoration" aria-hidden="true">
@@ -143,9 +198,9 @@ function FoundationPage() {
               </div>
               <h3>Aplicação web</h3>
               <p>React, TypeScript e Vite com rotas e estilos responsivos.</p>
-              <div className="card-link">
-                Frontend <ArrowUpRight size={15} />
-              </div>
+              <Link className="card-link" to="/auth/login">
+                Acessar portal <ArrowUpRight size={15} />
+              </Link>
             </article>
             <article className="foundation-card">
               <div className="foundation-card-top">
@@ -205,6 +260,13 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<FoundationPage />} />
+      <Route path="/auth/login" element={<LoginPage />} />
+      <Route path="/auth/register" element={<RegisterPage />} />
+      <Route path="/auth/forgot-password" element={<SimpleAuthPage mode="forgot" />} />
+      <Route path="/auth/verify-email" element={<SimpleAuthPage mode="verify" />} />
+      <Route path="/auth/reset-password" element={<SimpleAuthPage mode="reset" />} />
+      <Route path="/auth/complete" element={<CompleteOAuthPage />} />
+      <Route path="/auth/connections" element={<ConnectionsPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

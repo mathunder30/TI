@@ -1,9 +1,8 @@
 # Portal de Chamados de TI — São Camilo
 
-Fundação do monorepo para o portal que atenderá as três unidades do São Camilo. O produto terá
-somente os perfis `FUNCIONARIO` e `TI`, com um único administrador de TI. Esta etapa prepara a
-estrutura, API, interface inicial, banco MySQL e migrations; não implementa login nem fluxo de
-chamados.
+Monorepo do portal que atenderá as três unidades do São Camilo. O produto terá somente os perfis
+`FUNCIONARIO` e `TI`, com um único administrador de TI. A Etapa 3 implementa autenticação e cadastro
+de funcionários; os fluxos de chamados pertencem a uma etapa posterior.
 
 ## Requisitos locais
 
@@ -14,9 +13,9 @@ chamados.
 
 ## Instalação
 
-1. Copie `.env.example` para `.env` e informe uma URL `DATABASE_URL` de um usuário local dedicado
-   ao projeto. Não use nem versione credenciais de produção. Um exemplo de URL é
-   `mysql://portal_app:SENHA@127.0.0.1:3306/sao_camilo_portal`.
+1. Copie `.env.example` para `.env` e informe `DATABASE_URL`, `SHADOW_DATABASE_URL` e um
+   `SESSION_SECRET` aleatório com pelo menos 32 caracteres. Use usuário local dedicado e não
+   versione credenciais. Veja [autenticação](docs/authentication.md) para SMTP, Google e Apple.
 2. Crie o schema e o usuário de desenvolvimento no MySQL (em MySQL Workbench ou MySQL Shell):
 
    ```sql
@@ -52,6 +51,10 @@ chamados.
 Frontend: `http://localhost:5173`. API: `http://localhost:3000/api/v1/health/live` e
 `http://localhost:3000/api/v1/health/ready`.
 
+Para provisionar o administrador TI pela primeira vez, siga o procedimento em
+[autenticação](docs/authentication.md#primeiro-administrador-ti). O provisionamento não é aberto
+no cadastro público.
+
 ## Comandos úteis
 
 | Comando                | Finalidade                                    |
@@ -76,10 +79,11 @@ Frontend: `http://localhost:5173`. API: `http://localhost:3000/api/v1/health/liv
 
 ## Etapa atual e limites
 
-O endpoint de prontidão executa `SELECT 1` no banco. A tela inicial serve apenas para validar a
-integração com a API. Cadastro, autenticação, OAuth, chamadas, notificações, scheduler, anexos e
-relatórios ainda não foram implementados. Os modelos do Prisma registram a estrutura planejada;
-ter uma tabela ou rota de saúde não significa que esses fluxos estejam prontos.
+Autenticação por senha, verificação e recuperação por e-mail, associação autenticada de provedores
+e estrutura OAuth Google/Apple estão implementadas. OAuth e e-mail permanecem indisponíveis até
+que credenciais verdadeiras sejam fornecidas. O endpoint de prontidão executa `SELECT 1` no banco.
+Fluxos de chamados, notificações de chamados, scheduler, anexos e relatórios ainda não estão
+implementados.
 
-Consulte [arquitetura](docs/architecture.md), [modelo de dados](docs/database.md) e
+Consulte [autenticação](docs/authentication.md), [arquitetura](docs/architecture.md), [modelo de dados](docs/database.md) e
 [operação e recuperação](docs/operations.md).

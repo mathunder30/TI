@@ -22,21 +22,22 @@ para configurar migrations. `GET /api/v1/health/live` verifica o processo da API
 
 ## Limites desta fundação
 
-As pastas e os modelos de dados preparam a evolução, mas não implementam autenticação, regras de
-chamados, scheduler, envio de e-mails, upload ou relatórios. Nenhuma credencial de Google ou Apple
-é necessária ou simulada nesta etapa. Variáveis e endpoints não devem ser tratados como recursos
-funcionais sem a implementação correspondente.
+Autenticação local e a estrutura OIDC Google/Apple foram implementadas na Etapa 3. Os provedores
+externos permanecem desativados até receberem credenciais reais; veja
+[autenticação](authentication.md). Fluxos de chamados, scheduler, anexos e relatórios ainda não
+foram implementados.
 
 ## Decisões de segurança
 
 - Somente `FUNCIONARIO` e `TI` são papéis válidos.
-- A tabela singleton `AdminAccount` reserva um único slot administrativo; o futuro provisionamento
-  deverá criá-lo no backend, dentro de transação, e recusar segundo administrador.
+- A tabela singleton `AdminAccount` reserva um único slot administrativo; `admin:provision` cria a
+  conta no backend, dentro de transação, e recusa um segundo administrador.
 - A API centraliza erros, aplica Helmet, CORS configurável, limite inicial de JSON e rate limit
   básico por IP.
 - Segredos ficam em `.env`, ignorado pelo Git. O frontend recebe apenas variáveis `VITE_*` públicas.
-- O log de auditoria será append-only pela API; alterações administrativas deverão registrar ator,
-  ação, entidade e diferenças sanitizadas, sem tokens, senhas ou segredos.
+- O log de auditoria registra o provisionamento TI e associação de métodos de acesso; operações
+  administrativas futuras devem registrar ator, ação, entidade e diferenças sanitizadas, sem
+  tokens, senhas ou segredos.
 
 ## Agendamento futuro
 
@@ -46,8 +47,8 @@ domingo e consultar um calendário de feriados configurável. O job deverá regi
 automático no histórico e evitar duplicidade em reinícios ou múltiplas instâncias. Nenhum job está
 ativo nesta etapa.
 
-## E-mail futuro
+## E-mail
 
-Verificação de cadastro, redefinição de senha e notificações devem usar um serviço SMTP/API
-configurado pelo backend via variáveis de ambiente. Em ambiente sem credenciais, a integração deve
-ser explicitamente desabilitada; não se deve simular envio.
+Verificação de cadastro e redefinição de senha usam SMTP configurado no backend por variáveis de
+ambiente. Sem credenciais, essas ações ficam desabilitadas; não se simula envio. Notificações de
+chamados dependerão do mesmo serviço quando essa funcionalidade for implementada.
