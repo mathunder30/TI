@@ -46,5 +46,6 @@ Ele se recusa a executar se `NODE_ENV=production` ou se o host do banco não for
 ## Fora desta entrega
 
 Listagem e detalhe foram completados nas entregas seguintes. Mensagens, transições e anexos estão
-descritos em [ticket-workflow.md](ticket-workflow.md). Fechamento automático e dashboard completo
-de TI permanecem fora do escopo atual.
+descritos em [ticket-workflow.md](ticket-workflow.md). Os dashboards operacionais do funcionário e
+do TI foram consolidados na Entrega 5 (ver [dashboards.md](dashboards.md)). Fechamento automático e
+relatórios analíticos avançados permanecem fora do escopo atual.

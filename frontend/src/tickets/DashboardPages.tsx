@@ -36,7 +36,7 @@ type TicketSummary = {
   unit?: string;
 };
 type EmployeeDashboard = {
-  summary: { open: number; inProgress: number; waitingForEmployee: number; resolved: number };
+  summary: { active: number; inProgress: number; waitingForEmployee: number; resolved: number };
   recentTickets: TicketSummary[];
 };
 type TiDashboard = {
@@ -220,7 +220,7 @@ export function EmployeeDashboardPage() {
         {(data) => (
           <>
             <div className="dashboard-metrics">
-              <MetricCard label="Chamados abertos" value={data.summary.open} />
+              <MetricCard label="Chamados ativos" value={data.summary.active} />
               <MetricCard label="Em atendimento" value={data.summary.inProgress} tone="violet" />
               <MetricCard
                 label="Aguardando sua resposta"
@@ -229,6 +229,11 @@ export function EmployeeDashboardPage() {
               />
               <MetricCard label="Resolvidos" value={data.summary.resolved} tone="green" />
             </div>
+            <p className="dashboard-metric-note">
+              Chamados ativos inclui todos os status ainda não fechados ou cancelados. Os
+              indicadores de atendimento, espera e resolução são recortes específicos e podem se
+              sobrepor a esse total.
+            </p>
             <section className="dashboard-section">
               <div className="dashboard-section-heading">
                 <div>

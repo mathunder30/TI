@@ -1396,6 +1396,12 @@ h1 {
   font-size: 32px;
   line-height: 1;
 }
+.dashboard-metric-note {
+  margin: -16px 0 24px;
+  color: #718499;
+  font-size: 11px;
+  line-height: 1.6;
+}
 .dashboard-metric--violet strong {
   color: #655bb7;
 }

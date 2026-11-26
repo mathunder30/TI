@@ -1,8 +1,9 @@
 # Portal de Chamados de TI — São Camilo
 
 Monorepo do portal que atenderá as três unidades do São Camilo. O produto terá somente os perfis
-`FUNCIONARIO` e `TI`, com um único administrador de TI. A Etapa 3 implementa autenticação e cadastro
-de funcionários; os fluxos de chamados pertencem a uma etapa posterior.
+`FUNCIONARIO` e `TI`, com um único administrador de TI. O sistema contempla autenticação, cadastro
+de funcionários, abertura e acompanhamento de chamados, fluxo de atendimento e mensagens, anexos privados
+e dashboards operacionais.
 
 ## Requisitos locais
 
@@ -85,11 +86,12 @@ Autenticação por senha, verificação e recuperação por e-mail, associação
 e estrutura OAuth Google/Apple estão implementadas. OAuth e e-mail permanecem indisponíveis até
 que credenciais verdadeiras sejam fornecidas. O endpoint de prontidão executa `SELECT 1` no banco.
 Na Etapa 4, o portal do funcionário já permite acompanhar chamados, consultar histórico e conversar
-com TI. A fila mínima de atendimento permite ao único administrador responder, solicitar
+com TI. A fila de atendimento permite ao único administrador responder, solicitar
 informações, registrar soluções e gerenciar anexos privados. O fluxo de confirmação e reabertura
-também está integrado ao banco.
+também está integrado ao banco. Na Entrega 5, foram consolidados os dashboards operacionais do funcionário
+e do TI com métricas ativas e indicadores contextuais.
 
 Consulte [autenticação](docs/authentication.md), [catálogos](docs/catalogs.md),
 [abertura de chamados](docs/ticket-creation.md), [arquitetura](docs/architecture.md),
-[mensagens, status e anexos](docs/ticket-workflow.md), [modelo de dados](docs/database.md) e
-[operação e recuperação](docs/operations.md).
+[mensagens, status e anexos](docs/ticket-workflow.md), [dashboards](docs/dashboards.md),
+[modelo de dados](docs/database.md) e [operação e recuperação](docs/operations.md).

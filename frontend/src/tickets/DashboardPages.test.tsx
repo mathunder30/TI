@@ -39,7 +39,7 @@ describe('dashboards', () => {
       if (url.pathname === '/api/v1/auth/session') return session('FUNCIONARIO');
       if (url.pathname === '/api/v1/tickets/dashboard/employee')
         return json({
-          summary: { open: 2, inProgress: 1, waitingForEmployee: 3, resolved: 4 },
+          summary: { active: 6, inProgress: 1, waitingForEmployee: 3, resolved: 4 },
           recentTickets: [
             {
               id: 'ticket-1',
@@ -66,8 +66,11 @@ describe('dashboards', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole('heading', { name: 'Olá, Ana.' })).toBeInTheDocument();
-    expect(screen.getByText('Chamados abertos').parentElement).toHaveTextContent('2');
+    expect(screen.getByText('Chamados ativos').parentElement).toHaveTextContent('6');
     expect(screen.getByText('Aguardando sua resposta').parentElement).toHaveTextContent('3');
+    expect(
+      screen.getByText(/todos os status ainda não fechados ou cancelados/i),
+    ).toBeInTheDocument();
     expect(await screen.findByText('Impressora da recepção')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Abrir chamado/ })).toHaveAttribute(
       'href',
@@ -139,7 +142,7 @@ describe('dashboards', () => {
       if (url.pathname === '/api/v1/tickets/dashboard/employee') {
         if (fail) return json({ error: { message: 'Serviço temporariamente indisponível.' } }, 503);
         return json({
-          summary: { open: 0, inProgress: 0, waitingForEmployee: 0, resolved: 0 },
+          summary: { active: 0, inProgress: 0, waitingForEmployee: 0, resolved: 0 },
           recentTickets: [],
         });
       }

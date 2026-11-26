@@ -577,6 +577,7 @@ integration('abertura de chamados no MySQL', () => {
       TicketStatus.RESOLVIDO,
       TicketStatus.FECHADO,
       TicketStatus.REABERTO,
+      TicketStatus.CANCELADO,
     ];
     const createdIds: string[] = [];
     for (const [index, status] of statuses.entries()) {
@@ -626,15 +627,36 @@ integration('abertura de chamados no MySQL', () => {
         .filter((row) => selected.includes(row.status))
         .reduce((sum, row) => sum + row._count._all, 0);
     expect(employeeDashboard.body.summary).toEqual({
-      open: countOwn([TicketStatus.ABERTO, TicketStatus.EM_TRIAGEM, TicketStatus.REABERTO]),
+      active: countOwn(
+        Object.values(TicketStatus).filter(
+          (status) => status !== TicketStatus.FECHADO && status !== TicketStatus.CANCELADO,
+        ),
+      ),
       inProgress: countOwn([TicketStatus.EM_ATENDIMENTO]),
       waitingForEmployee: countOwn([TicketStatus.AGUARDANDO_FUNCIONARIO]),
       resolved: countOwn([TicketStatus.RESOLVIDO, TicketStatus.FECHADO]),
     });
+    expect(employeeDashboard.body.summary.active).toBeGreaterThan(
+      employeeDashboard.body.summary.inProgress,
+    );
+    expect(employeeDashboard.body.summary.active).toBeGreaterThan(
+      employeeDashboard.body.summary.waitingForEmployee,
+    );
+    const employeeCardSum = Object.values(
+      employeeDashboard.body.summary as Record<string, number>,
+    ).reduce((sum, value) => sum + value, 0);
+    const ownNonCancelledCount = await prisma.ticket.count({
+      where: {
+        requesterUserId: requesterId,
+        status: { not: TicketStatus.CANCELADO },
+      },
+    });
+    expect(employeeCardSum).toBeGreaterThan(ownNonCancelledCount);
     expect(
       employeeDashboard.body.recentTickets.map((ticket: { id: string }) => ticket.id),
     ).not.toContain(crossUnitTicket.id);
     expect(JSON.stringify(employeeDashboard.body)).not.toContain('requesterUserId');
+    expect(JSON.stringify(employeeDashboard.body)).not.toContain('requesterEmailSnapshot');
 
     const emptyEmployee = await createUser({
       suffix: `E${suffix}`,
@@ -644,7 +666,7 @@ integration('abertura de chamados no MySQL', () => {
     const emptyDashboard = await getTickets(emptyEmployee.id, '/dashboard/employee');
     expect(emptyDashboard.status).toBe(200);
     expect(emptyDashboard.body.summary).toEqual({
-      open: 0,
+      active: 0,
       inProgress: 0,
       waitingForEmployee: 0,
       resolved: 0,
@@ -685,10 +707,16 @@ integration('abertura de chamados no MySQL', () => {
         ticket.unit.includes(`unidade B ${suffix}`),
       ),
     ).toBe(true);
+    expect(JSON.stringify(tiDashboard.body)).not.toContain('requesterEmailSnapshot');
+    expect(JSON.stringify(tiDashboard.body)).not.toContain('description');
+    expect((await request(testApp).get('/api/v1/tickets/dashboard/ti')).status).toBe(401);
     expect((await getTickets(requesterId, '/dashboard/ti')).status).toBe(403);
     expect((await getTickets(unprovisionedTiId, '/dashboard/ti')).status).toBe(403);
     expect((await getTickets(tiId, '/dashboard/employee')).status).toBe(403);
     expect((await getTickets(requesterId, '/dashboard/employee?unitId=other')).status).toBe(400);
+    expect(
+      (await getTickets(requesterId, `/dashboard/employee?userId=${otherRequesterId}`)).status,
+    ).toBe(400);
     await prisma.ticketHistory.deleteMany({ where: { ticketId: { in: createdIds } } });
     await prisma.ticket.deleteMany({ where: { id: { in: createdIds } } });
   });

@@ -5,6 +5,47 @@ coverage/
 .env.*
 !.env.example
 *.log
+logs/
+*.log.*
+
+# Local credential and private-key material
+secrets/
+credentials/
+credentials*.json
+*.credentials.json
+service-account*.json
+*-service-account*.json
+secrets*.json
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Local databases and database backups
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+backups/
+**/backups/
+*.dump
+*.bak
+*.sql.gz
+*.sql.bz2
+*.sql.zst
+*.backup
+*.backup.*
+*.backup.sql
+*.sql.backup
+backup.sql
+**/backup.sql
+
+# Uploaded content must remain outside the repository
+uploads/
+**/uploads/
 .DS_Store
 Thumbs.db
 backend/storage/

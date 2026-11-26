@@ -25,8 +25,9 @@ para configurar migrations. `GET /api/v1/health/live` verifica o processo da API
 Autenticação local e a estrutura OIDC Google/Apple foram implementadas na Etapa 3. Os provedores
 externos permanecem desativados até receberem credenciais reais; veja
 [autenticação](authentication.md). Abertura, portal do funcionário, mensagens públicas, transições
-de atendimento e anexos privados estão descritos em [ticket-workflow.md](ticket-workflow.md). O
-fechamento automático e relatórios permanecem fora do escopo atual.
+de atendimento e anexos privados estão descritos em [ticket-workflow.md](ticket-workflow.md). Os
+dashboards operacionais de funcionário e TI estão descritos em [dashboards.md](dashboards.md). O
+fechamento automático e relatórios analíticos avançados permanecem fora do escopo atual.
 
 ## Decisões de segurança
 

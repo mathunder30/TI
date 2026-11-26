@@ -257,7 +257,14 @@ export function createTicketsRouter(dependencies = productionDependencies) {
         .reduce((sum, item) => sum + item._count._all, 0);
     response.json({
       summary: {
-        open: countByStatus([TicketStatus.ABERTO, TicketStatus.EM_TRIAGEM, TicketStatus.REABERTO]),
+        active: countByStatus([
+          TicketStatus.ABERTO,
+          TicketStatus.EM_TRIAGEM,
+          TicketStatus.EM_ATENDIMENTO,
+          TicketStatus.AGUARDANDO_FUNCIONARIO,
+          TicketStatus.RESOLVIDO,
+          TicketStatus.REABERTO,
+        ]),
         inProgress: countByStatus([TicketStatus.EM_ATENDIMENTO]),
         waitingForEmployee: countByStatus([TicketStatus.AGUARDANDO_FUNCIONARIO]),
         resolved: countByStatus([TicketStatus.RESOLVIDO, TicketStatus.FECHADO]),
